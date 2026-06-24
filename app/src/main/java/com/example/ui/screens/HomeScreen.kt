@@ -137,101 +137,6 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Quick TV Settings Row (D-pad horizontal, scrollable on mobile)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .then(if (isMobile) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val activeProfile by viewModel.activeProfile.collectAsState()
-                val isChildMode by viewModel.isChildMode.collectAsState()
-                val sleepTimerMinutes by viewModel.sleepTimerMinutes.collectAsState()
-                val showWorkingOnly by viewModel.showWorkingOnly.collectAsState()
-
-                // Profile Selector Button
-                Button(
-                    onClick = {
-                        val nextProfile = when (activeProfile) {
-                            "Profil 1" -> "Profil 2"
-                            "Profil 2" -> "Misafir"
-                            else -> "Profil 1"
-                        }
-                        viewModel.selectProfile(nextProfile)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceBlue),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text("👤 Profil: $activeProfile", style = MaterialTheme.typography.bodySmall, color = Color.White)
-                }
-
-                // Kids Mode Toggle Button
-                Button(
-                    onClick = { viewModel.toggleChildMode("1234") },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isChildMode) LiveRed else SurfaceBlue
-                    ),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text(
-                        text = if (isChildMode) "🧸 Çocuk Modu: AÇIK" else "🧸 Çocuk Modu: KAPALI",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White
-                    )
-                }
-
-                // Sleep Timer Selector Button
-                Button(
-                    onClick = {
-                        if (sleepTimerMinutes == null) {
-                            viewModel.startSleepTimer(30)
-                        } else if (sleepTimerMinutes == 30) {
-                            viewModel.startSleepTimer(60)
-                        } else {
-                            viewModel.cancelSleepTimer()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (sleepTimerMinutes != null) AuroraPurple else SurfaceBlue
-                    ),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text(
-                        text = if (sleepTimerMinutes != null) "⏰ Uyku: ${sleepTimerMinutes}dk" else "⏰ Uyku Zamanlayıcı",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White
-                    )
-                }
-
-                // Working Channels Filter
-                Button(
-                    onClick = { viewModel.toggleWorkingOnly() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (showWorkingOnly) AuroraCyan else SurfaceBlue
-                    ),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text(
-                        text = if (showWorkingOnly) "✅ Sadece Çalışanlar" else "📺 Tüm Kanallar",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (showWorkingOnly) DeepSpaceBlue else Color.White
-                    )
-                }
-
-                // Screensaver Activate button
-                Button(
-                    onClick = { viewModel.toggleScreensaver(true) },
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceBlue),
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text("🖥️ Ekran Koruyucu", style = MaterialTheme.typography.bodySmall, color = Color.White)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
             // Beautiful Aesthetic Smart Tab Switcher (Yerli/Yabancı + Countries)
             AestheticSmartTabSwitcher(
                 selectedTab = selectedTab,
@@ -340,7 +245,10 @@ fun HomeScreen(
 
                             if (selectedCategory == "⚙️ Görünüm & Ayarlar") {
                                 Box(modifier = Modifier.fillMaxSize()) {
-                                    SettingsCustomizationPanel(viewModel)
+                                    SettingsCustomizationPanel(
+                                        viewModel = viewModel,
+                                        modifier = Modifier.verticalScroll(rememberScrollState())
+                                    )
                                 }
                             } else {
                                 Column(modifier = Modifier.fillMaxSize()) {
@@ -351,6 +259,14 @@ fun HomeScreen(
                                             .height(180.dp)
                                             .clip(RoundedCornerShape(16.dp))
                                             .background(SurfaceBlue.copy(alpha = 0.6f))
+                                            .clickable {
+                                                if (viewModel.activeChannel.value == null) {
+                                                    heroChannel?.let { 
+                                                        viewModel.selectChannel(it)
+                                                        onNavigateToPlayer()
+                                                    }
+                                                }
+                                            }
                                     ) {
                                         val activeChannel by viewModel.activeChannel.collectAsState()
                                         if (activeChannel != null) {
@@ -443,7 +359,10 @@ fun HomeScreen(
                                     .fillMaxHeight()
                             ) {
                                 if (selectedCategory == "⚙️ Görünüm & Ayarlar") {
-                                    SettingsCustomizationPanel(viewModel)
+                                    SettingsCustomizationPanel(
+                                        viewModel = viewModel,
+                                        modifier = Modifier.verticalScroll(rememberScrollState())
+                                    )
                                 } else {
                                     // HERO AREA (55% height) with Live PIP Preview if active
                                     Box(
@@ -452,6 +371,14 @@ fun HomeScreen(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(24.dp))
                                             .background(SurfaceBlue.copy(alpha = 0.6f))
+                                            .clickable {
+                                                if (viewModel.activeChannel.value == null) {
+                                                    heroChannel?.let { 
+                                                        viewModel.selectChannel(it)
+                                                        onNavigateToPlayer()
+                                                    }
+                                                }
+                                            }
                                     ) {
                                         val activeChannel by viewModel.activeChannel.collectAsState()
                                         if (activeChannel != null) {
@@ -703,9 +630,9 @@ fun AestheticSmartTabSwitcher(
         // Main Tab Buttons (Yerli vs Yabancı)
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(SurfaceBlue.copy(alpha = 0.5f))
-                .padding(4.dp),
+                .padding(2.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             val tabs = listOf("Yerli", "Yabancı")
@@ -721,18 +648,18 @@ fun AestheticSmartTabSwitcher(
 
                 Box(
                     modifier = Modifier
-                        .then(if (isMobile) Modifier.weight(1f) else Modifier.width(180.dp))
-                        .clip(RoundedCornerShape(12.dp))
+                        .then(if (isMobile) Modifier.weight(1f) else Modifier.width(150.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .then(if (bgBrush != null) Modifier.background(bgBrush) else Modifier)
                         .onFocusChanged { isFocused = it.isFocused }
                         .focusable()
                         .clickable { onTabSelect(tab) }
-                        .padding(vertical = 10.dp, horizontal = 16.dp),
+                        .padding(vertical = 6.dp, horizontal = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (tab == "Yerli") "🇹🇷 Yerli (Türkçe)" else "🌐 Yabancı (Yurt Dışı)",
-                        style = MaterialTheme.typography.bodyMedium.copy(
+                        text = if (tab == "Yerli") "🇹🇷 Yerli" else "🌐 Yabancı",
+                        style = MaterialTheme.typography.bodySmall.copy(
                             fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium
                         ),
                         color = if (isSelected || isFocused) Color.White else TextSecondary
@@ -1214,7 +1141,7 @@ fun TvComfortBadge(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun SettingsCustomizationPanel(viewModel: MainViewModel) {
+fun SettingsCustomizationPanel(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val layoutModel by viewModel.layoutModel.collectAsState()
     val sortingOption by viewModel.sortingOption.collectAsState()
 
@@ -1223,9 +1150,8 @@ fun SettingsCustomizationPanel(viewModel: MainViewModel) {
     val sleepTimerMinutes by viewModel.sleepTimerMinutes.collectAsState()
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(8.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(SurfaceBlue.copy(alpha = 0.5f))
@@ -1241,6 +1167,92 @@ fun SettingsCustomizationPanel(viewModel: MainViewModel) {
             color = TextSecondary,
             modifier = Modifier.padding(bottom = 20.dp)
         )
+
+        // Hızlı TV Ayarları (Eski Quick TV Settings Row)
+        Text(
+            text = "⚡ Hızlı Ayarlar",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color.White),
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val showWorkingOnly by viewModel.showWorkingOnly.collectAsState()
+            
+            // Profile Selector Button
+            Button(
+                onClick = {
+                    val nextProfile = when (activeProfile) {
+                        "Profil 1" -> "Profil 2"
+                        "Profil 2" -> "Misafir"
+                        else -> "Profil 1"
+                    }
+                    viewModel.selectProfile(nextProfile)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = SurfaceBlue),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text("👤 Profil: $activeProfile", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+            }
+
+            // Kids Mode Toggle Button
+            Button(
+                onClick = { viewModel.toggleChildMode("1234") },
+                colors = ButtonDefaults.buttonColors(containerColor = if (isChildMode) LiveRed else SurfaceBlue),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text(
+                    text = if (isChildMode) "🧸 Çocuk Modu: AÇIK" else "🧸 Çocuk Modu: KAPALI",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+            }
+
+            // Sleep Timer Selector Button
+            Button(
+                onClick = {
+                    if (sleepTimerMinutes == null) {
+                        viewModel.startSleepTimer(30)
+                    } else if (sleepTimerMinutes == 30) {
+                        viewModel.startSleepTimer(60)
+                    } else {
+                        viewModel.cancelSleepTimer()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = if (sleepTimerMinutes != null) AuroraPurple else SurfaceBlue),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text(
+                    text = if (sleepTimerMinutes != null) "⏰ Uyku: ${sleepTimerMinutes}dk" else "⏰ Uyku Zamanlayıcı",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+            }
+
+            // Working Channels Filter
+            Button(
+                onClick = { viewModel.toggleWorkingOnly() },
+                colors = ButtonDefaults.buttonColors(containerColor = if (showWorkingOnly) AuroraCyan else SurfaceBlue),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text(
+                    text = if (showWorkingOnly) "✅ Sadece Çalışanlar" else "📺 Tüm Kanallar",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (showWorkingOnly) DeepSpaceBlue else Color.White
+                )
+            }
+
+            // Screensaver Activate button
+            Button(
+                onClick = { viewModel.toggleScreensaver(true) },
+                colors = ButtonDefaults.buttonColors(containerColor = SurfaceBlue),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text("🖥️ Ekran Koruyucu", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+            }
+        }
 
         // 1. ARAYÜZ MODELİ SEÇİMİ (5 FARKLI MODEL)
         Text(
@@ -1390,6 +1402,14 @@ fun LivePipPreview(
         BorderStroke(1.dp, SurfaceBlue)
     }
 
+    var playerView: PlayerView? by remember { mutableStateOf(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            playerView?.player = null
+        }
+    }
+
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.Black),
         shape = RoundedCornerShape(16.dp),
@@ -1400,21 +1420,31 @@ fun LivePipPreview(
             .focusable()
             .clickable { onNavigateToFullScreen() }
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
             if (activePlayerInstance != null) {
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
+                            isClickable = false
+                            isFocusable = false
                             layoutParams = ViewGroup.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT
                             )
                             player = activePlayerInstance
+                            playerView = this
+                            onResume()
                         }
                     },
                     update = { pv ->
                         pv.player = activePlayerInstance
+                    },
+                    onRelease = { pv ->
+                        pv.player = null
+                        pv.onPause()
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -1427,10 +1457,11 @@ fun LivePipPreview(
                 }
             }
 
-            // Pip controls overlay
+            // Pip controls overlay - absorbs clicks
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .clickable { onNavigateToFullScreen() }
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
@@ -1520,7 +1551,10 @@ fun SparkleTVLayout(
         }
 
         if (selectedCategory == "⚙️ Görünüm & Ayarlar") {
-            SettingsCustomizationPanel(viewModel)
+            SettingsCustomizationPanel(
+                viewModel = viewModel,
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            )
         } else {
             // Full width Grid
             Column(modifier = Modifier.fillMaxSize()) {
@@ -1897,7 +1931,10 @@ fun YouTubeTVLayout(
 
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
             if (selectedCategory == "⚙️ Görünüm & Ayarlar") {
-                SettingsCustomizationPanel(viewModel)
+                SettingsCustomizationPanel(
+                    viewModel = viewModel,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                )
             } else {
                 Text(
                     text = "YOUTUBE TV — $selectedCategory CANLI YAYINLAR",
@@ -1977,12 +2014,21 @@ fun getSortedCategoryChannels(
     recentChannels: List<IPTVChannel>,
     sortingOption: String,
     channelWatchTimes: Map<String, Long>,
-    visualOrderList: List<String>
+    visualOrderList: List<String>,
+    selectedTab: String = "Yerli",
+    selectedForeignCountry: String = "Azerbaycan"
 ): List<IPTVChannel> {
     val rawList = when (selectedCategory) {
         CategoryHelper.CAT_FAVORITES -> favoriteChannels
         CategoryHelper.CAT_RECENTS -> recentChannels
-        else -> allChannels.filter { it.category == selectedCategory }
+        else -> {
+            val catFiltered = allChannels.filter { it.category == selectedCategory }
+            if (selectedTab == "Yerli") {
+                catFiltered.filter { it.country == "Türkiye" || it.country == "TR" }
+            } else {
+                catFiltered.filter { it.country == selectedForeignCountry }
+            }
+        }
     }
 
     return when (sortingOption) {

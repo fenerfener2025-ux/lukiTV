@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import com.example.data.local.SettingsManager
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -118,11 +119,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val viewingCategoryStats: StateFlow<String> = _viewingCategoryStats.asStateFlow()
 
     // NEW TV Ultimate Layout and Sorting fields
-    private val _layoutModel = MutableStateFlow("TiviMate") // TiviMate, Sparkle TV, Google TV, Netflix TV, YouTube TV
-    val layoutModel: StateFlow<String> = _layoutModel.asStateFlow()
+    private val settingsManager = SettingsManager(application)
+    
+    val layoutModel: StateFlow<String> = settingsManager.layoutModelFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "TiviMate")
 
-    private val _sortingOption = MutableStateFlow("Varsayılan") // Varsayılan, A-Z, En Popüler, Akıllı Sıralama, Görsel Referans
-    val sortingOption: StateFlow<String> = _sortingOption.asStateFlow()
+    val sortingOption: StateFlow<String> = settingsManager.sortingOptionFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "Varsayılan")
 
     private val _channelWatchTimes = MutableStateFlow<Map<String, Long>>(emptyMap())
     val channelWatchTimes: StateFlow<Map<String, Long>> = _channelWatchTimes.asStateFlow()
@@ -294,12 +297,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectLayoutModel(model: String) {
-        _layoutModel.value = model
+        viewModelScope.launch {
+            settingsManager.saveLayoutModel(model)
+        }
         showRemoteToast("Arayüz Teması Değiştirildi: $model Modu")
     }
 
     fun selectSortingOption(option: String) {
-        _sortingOption.value = option
+        viewModelScope.launch {
+            settingsManager.saveSortingOption(option)
+        }
         showRemoteToast("Kanal Sıralaması: $option")
     }
 

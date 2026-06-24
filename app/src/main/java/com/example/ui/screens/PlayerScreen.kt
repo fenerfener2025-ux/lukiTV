@@ -31,6 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.media3.ui.PlayerView
 import com.example.domain.model.IPTVChannel
 import com.example.player.PlayerEngineManager
@@ -54,6 +57,9 @@ fun PlayerScreen(
     var showZapList by remember { mutableStateOf(false) }
     var showZapOverlay by remember { mutableStateOf(false) }
     var showComfortCheck by remember { mutableStateOf(false) }
+
+    // Use remember for key event handling
+    val focusRequester = remember { FocusRequester() }
 
     // Auto-hide controls timer (4 seconds)
     LaunchedEffect(showControls) {
@@ -80,13 +86,60 @@ fun PlayerScreen(
         }
     }
 
+    // Request focus when screen starts
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    var playerView: PlayerView? by remember { mutableStateOf(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            playerView?.player = null
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusRequester(focusRequester)
             .focusable()
             .clickable {
                 showControls = !showControls
+            }
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                    when (keyEvent.nativeKeyEvent.keyCode) {
+                        android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_CHANNEL_UP -> {
+                            val currentIndex = allChannels.indexOf(activeChannel)
+                            if (currentIndex >= 0 && allChannels.isNotEmpty()) {
+                                val nextIndex = if (currentIndex > 0) currentIndex - 1 else allChannels.size - 1
+                                viewModel.selectChannel(allChannels[nextIndex])
+                            }
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_DPAD_DOWN, android.view.KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                            val currentIndex = allChannels.indexOf(activeChannel)
+                            if (currentIndex >= 0 && allChannels.isNotEmpty()) {
+                                val nextIndex = if (currentIndex < allChannels.size - 1) currentIndex + 1 else 0
+                                viewModel.selectChannel(allChannels[nextIndex])
+                            }
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
+                            showControls = !showControls
+                            true
+                        }
+                        android.view.KeyEvent.KEYCODE_BACK -> {
+                            onNavigateBack()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
             }
     ) {
         // Media3 Android PlayerView integration
@@ -99,10 +152,16 @@ fun PlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     player = activePlayerInstance
+                    playerView = this
+                    onResume()
                 }
             },
-            update = { playerView ->
-                playerView.player = activePlayerInstance
+            update = { pv ->
+                pv.player = activePlayerInstance
+            },
+            onRelease = { pv ->
+                pv.player = null
+                pv.onPause()
             },
             modifier = Modifier.fillMaxSize()
         )

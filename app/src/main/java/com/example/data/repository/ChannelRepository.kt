@@ -103,8 +103,13 @@ class ChannelRepository(
     suspend fun syncPresetSources(onProgress: (String) -> Unit) = withContext(Dispatchers.IO) {
         val presets = mapOf(
             "TR_PRESET" to ("https://iptv-org.github.io/iptv/countries/tr.m3u" to "tr"),
-            "TURK_LANG" to ("https://iptv-org.github.io/iptv/languages/tur.m3u" to "tr"),
-            "FREE_TV" to ("https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8" to "en"),
+            "AZ_PRESET" to ("https://iptv-org.github.io/iptv/countries/az.m3u" to "az"),
+            "US_PRESET" to ("https://iptv-org.github.io/iptv/countries/us.m3u" to "en"),
+            "DE_PRESET" to ("https://iptv-org.github.io/iptv/countries/de.m3u" to "de"),
+            "GB_PRESET" to ("https://iptv-org.github.io/iptv/countries/uk.m3u" to "en"),
+            "FR_PRESET" to ("https://iptv-org.github.io/iptv/countries/fr.m3u" to "fr"),
+            "IT_PRESET" to ("https://iptv-org.github.io/iptv/countries/it.m3u" to "it"),
+            "ES_PRESET" to ("https://iptv-org.github.io/iptv/countries/es.m3u" to "es"),
             "TURKTV" to ("https://itasli.github.io/TURKTV/index.m3u" to "tr")
         )
 
@@ -118,7 +123,19 @@ class ChannelRepository(
                     if (response.isSuccessful) {
                         response.body?.byteStream()?.let { stream ->
                             val parsed = M3UParser.parse(stream, defaultLanguage = lang, isCustom = false)
-                            allParsed.addAll(parsed)
+                            // Override country based on the preset name to ensure country filtering works flawlessly
+                            val countryOverride = when (name) {
+                                "TR_PRESET", "TURKTV" -> "Türkiye"
+                                "AZ_PRESET" -> "Azerbaycan"
+                                "US_PRESET" -> "ABD"
+                                "DE_PRESET" -> "Almanya"
+                                "GB_PRESET" -> "İngiltere"
+                                "FR_PRESET" -> "Fransa"
+                                "IT_PRESET" -> "İtalya"
+                                "ES_PRESET" -> "İspanya"
+                                else -> "Bilinmiyor"
+                            }
+                            allParsed.addAll(parsed.map { it.copy(country = countryOverride) })
                         }
                     }
                 }

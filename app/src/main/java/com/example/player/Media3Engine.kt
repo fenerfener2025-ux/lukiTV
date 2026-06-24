@@ -10,6 +10,9 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.DefaultLoadControl
+
 class Media3Engine : PlayerEngine {
     override val name: String = "Media3 (ExoPlayer)"
     private var exoPlayer: ExoPlayer? = null
@@ -38,12 +41,24 @@ class Media3Engine : PlayerEngine {
             val httpDataSourceFactory = DefaultHttpDataSource.Factory()
                 .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(8000)
+                .setReadTimeoutMs(8000)
+                .setDefaultRequestProperties(mapOf("Referer" to "https://google.com/"))
             
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                    DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+                    2500, // min buffer to start playback
+                    5000 // min buffer to resume playback
+                ).build()
+
             val mediaSourceFactory = DefaultMediaSourceFactory(context)
                 .setDataSourceFactory(httpDataSourceFactory)
 
             exoPlayer = ExoPlayer.Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)
+                .setLoadControl(loadControl)
                 .build()
                 .apply {
                     repeatMode = Player.REPEAT_MODE_OFF
