@@ -1,0 +1,6 @@
+{
+  "name": "AuroraTV",
+  "description": "4K TV uyumlu, 10.000+ kanala hazır, AI önerili, gelişmiş Media3/ExoPlayer motorlu akıllı IPTV merkezi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
