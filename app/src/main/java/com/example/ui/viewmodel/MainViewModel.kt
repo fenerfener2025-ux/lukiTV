@@ -249,28 +249,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Open-source player principle: No built-in channels on first launch.
-        // User adds their own playlist (M3U URL, local file, Xtream API, or selects open-source preset).
+        // Seed default highly stable CDN Turkish channels on first launch if empty
         viewModelScope.launch {
+            repository.seedDefaultChannelsIfEmpty()
             val existing = allChannels.first()
             if (existing.isNotEmpty()) {
                 val recents = recentChannels.first()
                 val lastWatched = recents.firstOrNull() ?: existing.firstOrNull()
                 _heroChannel.value = lastWatched
                 updateHeroSuggestion()
-            }
-        }
-
-        // Self-healing automatic background channel updates on launch to ensure long-term link viability
-        viewModelScope.launch(Dispatchers.IO) {
-            val existing = allChannels.first()
-            if (existing.isNotEmpty()) {
-                delay(10000) // Delay to ensure app initializes and becomes fully active
-                Log.d("MainViewModel", "Auto-updating open-source preset in background to heal link sources...")
-                val trPreset = com.example.data.repository.OPEN_SOURCE_PRESETS.firstOrNull()
-                if (trPreset != null) {
-                    repository.loadPresetSource(trPreset) { /* silent progress */ }
-                }
             }
         }
 
