@@ -76,36 +76,38 @@ class PlayerEngineManager(private val context: Context) {
         engine.play(currentUrl)
     }
 
+    var onAutoNextRequested: (() -> Unit)? = null
+
     private fun handleErrorFallback() {
         scope.launch {
-            if (retryCount < maxRetries) {
-                // Exponential backoff retry
-                val delayTime = backoffDelays.getOrElse(retryCount) { 3000L }
-                _playbackState.value = PlaybackState.Loading("Yeniden deneniyor (${retryCount + 1}/$maxRetries)...")
+            val mirrors = currentChannel?.streamMirrors ?: emptyList()
+            if (currentMirrorIndex < mirrors.size - 1) {
+                // Instantly try next backup mirror stream!
+                currentMirrorIndex++
+                currentUrl = mirrors[currentMirrorIndex]
+                retryCount = 0
+                _playbackState.value = PlaybackState.Loading("Kanal şu an çalışmıyor, yedek yayına geçiliyor (${currentMirrorIndex + 1}/${mirrors.size})...")
+                Log.d("PlayerEngineManager", "Instant switch to stream mirror: $currentUrl")
+                delay(300)
+                playWithCurrentConfig()
+            } else if (retryCount < 2) {
+                // Short retry
                 retryCount++
-                delay(delayTime)
+                _playbackState.value = PlaybackState.Loading("Kanal şu an çalışmıyor, yeniden deneniyor ($retryCount/2)...")
+                delay(1000)
+                playWithCurrentConfig()
+            } else if (currentEngineIndex < engines.size - 1) {
+                // Try backup engine
+                retryCount = 0
+                currentEngineIndex++
+                _playbackState.value = PlaybackState.Loading("Alternatif oynatıcıya geçiliyor (${engines[currentEngineIndex].name})...")
+                delay(500)
                 playWithCurrentConfig()
             } else {
-                // Move to next engine
-                retryCount = 0
-                if (currentEngineIndex < engines.size - 1) {
-                    currentEngineIndex++
-                    Log.d("PlayerEngineManager", "Switching engine to: ${engines[currentEngineIndex].name}")
-                    playWithCurrentConfig()
-                } else {
-                    // Engines exhausted, try next stream mirror
-                    currentEngineIndex = 0 // reset engine to main
-                    val mirrors = currentChannel?.streamMirrors ?: emptyList()
-                    if (currentMirrorIndex < mirrors.size - 1) {
-                        currentMirrorIndex++
-                        currentUrl = mirrors[currentMirrorIndex]
-                        Log.d("PlayerEngineManager", "Switching to stream mirror index: $currentMirrorIndex ($currentUrl)")
-                        playWithCurrentConfig()
-                    } else {
-                        // Everything exhausted
-                        _playbackState.value = PlaybackState.Error("Yayın oynatılamadı. Tüm alternatif motorlar ve akış aynaları denendi.")
-                    }
-                }
+                _playbackState.value = PlaybackState.Error("Kanal şu an çalışmıyor.")
+                // Notify for auto next channel if enabled
+                delay(2000)
+                onAutoNextRequested?.invoke()
             }
         }
     }

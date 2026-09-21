@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -47,6 +48,8 @@ fun SearchScreen(
     val context = LocalContext.current
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
+    val categoryFilter by viewModel.searchCategoryFilter.collectAsState()
+    val qualityFilter by viewModel.searchQualityFilter.collectAsState()
 
     var showVoiceSimulation by remember { mutableStateOf(false) }
     var showComfortCheck by remember { mutableStateOf(false) }
@@ -153,9 +156,18 @@ fun SearchScreen(
             if (isMobile) {
                 // On mobile, native touch keyboard is used. Hide TV virtual keyboard and show 100% results list.
                 Column(modifier = Modifier.fillMaxSize()) {
+                    SmartSearchFilterSection(
+                        categoryFilter = categoryFilter,
+                        qualityFilter = qualityFilter,
+                        onCategorySelected = { viewModel.setSearchCategoryFilter(it) },
+                        onQualitySelected = { viewModel.setSearchQualityFilter(it) }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Text(
                         text = "Canlı Sonuçlar (${searchResults.size})",
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                         color = AuroraCyan,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
@@ -284,9 +296,18 @@ fun SearchScreen(
 
                     // Live Results Panel
                     Column(modifier = Modifier.weight(1f)) {
+                        SmartSearchFilterSection(
+                            categoryFilter = categoryFilter,
+                            qualityFilter = qualityFilter,
+                            onCategorySelected = { viewModel.setSearchCategoryFilter(it) },
+                            onQualitySelected = { viewModel.setSearchQualityFilter(it) }
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Text(
                             text = "Canlı Sonuçlar (${searchResults.size})",
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                             color = AuroraCyan,
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
@@ -459,6 +480,100 @@ fun SearchScreen(
                 containerColor = DeepSpaceBlue,
                 shape = RoundedCornerShape(16.dp)
             )
+        }
+    }
+}
+
+@Composable
+fun SmartSearchFilterSection(
+    categoryFilter: String,
+    qualityFilter: String,
+    onCategorySelected: (String) -> Unit,
+    onQualitySelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val categories = listOf("Tümü", "Favoriler", "Ulusal", "Spor", "Haber", "Sinema", "Belgesel", "Çocuk")
+    val qualities = listOf("Tümü", "4K / UHD", "FHD / 1080p", "HD / 720p", "SD")
+
+    Column(modifier = modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        // Category Chips
+        Text(
+            text = "🗂️ Kategori Filtresi",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = TextSecondary,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(categories) { cat ->
+                val isSelected = cat == categoryFilter
+                var isFocused by remember { mutableStateOf(false) }
+
+                Box(
+                    modifier = Modifier
+                        .onFocusChanged { isFocused = it.isFocused }
+                        .focusable()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            when {
+                                isSelected -> AuroraCyan
+                                isFocused -> AuroraPurple
+                                else -> SurfaceBlue
+                            }
+                        )
+                        .clickable { onCategorySelected(cat) }
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = cat,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (isSelected) DeepSpaceBlue else Color.White
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Quality Chips
+        Text(
+            text = "📺 Yayın Kalitesi Filtresi",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = TextSecondary,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(qualities) { qual ->
+                val isSelected = qual == qualityFilter
+                var isFocused by remember { mutableStateOf(false) }
+
+                Box(
+                    modifier = Modifier
+                        .onFocusChanged { isFocused = it.isFocused }
+                        .focusable()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            when {
+                                isSelected -> AuroraPurple
+                                isFocused -> AuroraCyan
+                                else -> SurfaceBlue
+                            }
+                        )
+                        .clickable { onQualitySelected(qual) }
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = qual,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (isSelected) Color.White else TextPrimary
+                    )
+                }
+            }
         }
     }
 }

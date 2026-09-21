@@ -23,15 +23,23 @@ data class IPTVChannel(
 ) {
     companion object {
         fun normalize(name: String): String {
-            return name.lowercase(Locale.getDefault())
-                .replace(Regex("[hd|fhd|4k|sd|3d|uhd|vip|\\s]+"), " ")
+            val lower = name.lowercase(Locale.ROOT)
                 .replace("ı", "i")
+                .replace("İ", "i")
                 .replace("ş", "s")
+                .replace("Ş", "s")
                 .replace("ğ", "g")
+                .replace("Ğ", "g")
                 .replace("ü", "u")
+                .replace("Ü", "u")
                 .replace("ö", "o")
+                .replace("Ö", "o")
                 .replace("ç", "c")
-                .trim()
+                .replace("Ç", "c")
+            // Remove quality tokens properly without regex character class mangling
+            val cleaned = lower.replace(Regex("\\b(hd|fhd|4k|8k|sd|3d|uhd|vip|1080p|720p|hevc|raw|plus)\\b"), " ")
+                .replace(Regex("[^a-z0-9\\s]"), " ")
+            return cleaned.replace(Regex("\\s+"), " ").trim()
         }
     }
 }

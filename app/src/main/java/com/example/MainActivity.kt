@@ -7,10 +7,18 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
@@ -28,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import com.example.domain.model.IPTVChannel
 import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.ThemeConfig
+import com.example.ui.theme.AppSurfaceTextureBox
 import com.example.ui.theme.SurfaceBlue
 import com.example.ui.theme.AuroraCyan
 import com.example.ui.theme.AuroraPurple
@@ -49,16 +59,30 @@ enum class Screen {
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private var activeScreen = Screen.Home
+    private val isInPiPMode = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         setContent {
-            MyApplicationTheme {
-                var currentScreen by remember { mutableStateOf(Screen.Home) }
-                var selectedDetailChannel by remember { mutableStateOf<IPTVChannel?>(null) }
-                var showExitDialog by remember { mutableStateOf(false) }
+            val palette by viewModel.themePalette.collectAsState()
+            val texture by viewModel.backgroundTexture.collectAsState()
+            val themeConfig = remember(palette, texture) { ThemeConfig(palette, texture) }
+
+            MyApplicationTheme(themeConfig = themeConfig) {
+                AppSurfaceTextureBox(palette = palette, texture = texture) {
+                    var currentScreen by remember { mutableStateOf(Screen.Home) }
+                    var selectedDetailChannel by remember { mutableStateOf<IPTVChannel?>(null) }
+                    var showExitDialog by remember { mutableStateOf(false) }
+                    val isPipActive by isInPiPMode
+
+                    val targetScreen = if (isPipActive) Screen.Player else currentScreen
+
+                LaunchedEffect(targetScreen) {
+                    activeScreen = targetScreen
+                }
 
                 val context = LocalContext.current
 
@@ -107,10 +131,38 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Screen state transitions using high performance Crossfade
-                    Crossfade(
-                        targetState = currentScreen,
-                        label = "screen_transition"
+                    // Screen state transitions using high performance custom AnimatedContent
+                    AnimatedContent(
+                        targetState = targetScreen,
+                        transitionSpec = {
+                            if (targetState == Screen.Player) {
+                                // Premium slide up + scale in on player launch
+                                (slideInVertically(animationSpec = spring(dampingRatio = 0.85f, stiffness = 220f)) { it } + 
+                                 fadeIn(animationSpec = tween(250)) +
+                                 scaleIn(animationSpec = spring(dampingRatio = 0.85f, stiffness = 220f), initialScale = 0.95f))
+                                    .togetherWith(
+                                        scaleOut(animationSpec = tween(200), targetScale = 0.95f) + 
+                                        fadeOut(animationSpec = tween(200))
+                                    )
+                            } else if (initialState == Screen.Player) {
+                                // Premium slide down + scale out when exiting player back to home
+                                (scaleIn(animationSpec = tween(250), initialScale = 0.95f) + 
+                                 fadeIn(animationSpec = tween(250)))
+                                    .togetherWith(
+                                        slideOutVertically(animationSpec = spring(dampingRatio = 0.88f, stiffness = 220f)) { it } + 
+                                        fadeOut(animationSpec = tween(200))
+                                    )
+                            } else {
+                                // Soft, elegant dynamic fade & slight scale for other standard screen shifts
+                                (fadeIn(animationSpec = tween(250)) + 
+                                 scaleIn(animationSpec = tween(250), initialScale = 0.98f))
+                                    .togetherWith(
+                                        fadeOut(animationSpec = tween(200))
+                                    )
+                            }
+                        },
+                        label = "screen_transition",
+                        modifier = Modifier.fillMaxSize()
                     ) { screen ->
                         when (screen) {
                             Screen.Home -> {
@@ -128,6 +180,7 @@ class MainActivity : ComponentActivity() {
                             Screen.Player -> {
                                 PlayerScreen(
                                     viewModel = viewModel,
+                                    isInPictureInPicture = isPipActive,
                                     onNavigateBack = {
                                         viewModel.stopPlayback()
                                         currentScreen = Screen.Home
@@ -256,6 +309,24 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (activeScreen == Screen.Player && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            try {
+                val params = android.app.PictureInPictureParams.Builder().build()
+                enterPictureInPictureMode(params)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPiPMode.value = isInPictureInPictureMode
+    }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         // Red (183), Green (184), Yellow (185), Blue (186)
@@ -275,6 +346,25 @@ class MainActivity : ComponentActivity() {
             }
             186, 134 -> {
                 viewModel.handleColorKey("BLUE")
+                return true
+            }
+            // Up Arrow / DPAD UP: Switch channel/content in player
+            19 -> {
+                if (activeScreen == Screen.Player) {
+                    viewModel.playPreviousChannel()
+                    return true
+                }
+            }
+            // Down Arrow / DPAD DOWN: Switch channel/content in player
+            20 -> {
+                if (activeScreen == Screen.Player) {
+                    viewModel.playNextChannel()
+                    return true
+                }
+            }
+            // F Key (Favorite / Favori)
+            34 -> {
+                viewModel.toggleCurrentChannelFavorite()
                 return true
             }
             // Number keys: KEYCODE_0 (7) to KEYCODE_9 (16)

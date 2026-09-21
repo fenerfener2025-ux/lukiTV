@@ -156,7 +156,7 @@ fun DetailScreen(
                             Spacer(modifier = Modifier.height(6.dp))
 
                             Text(
-                                text = currentEPG?.title ?: "Aurora Özel Yayın Kuşağı",
+                                text = currentEPG?.title ?: "LUKİTV Özel Yayın Kuşağı",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = TextPrimary
                             )
@@ -373,7 +373,7 @@ fun DetailScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 Text(
-                                    text = currentEPG?.title ?: "Aurora Özel Yayın Kuşağı",
+                                    text = currentEPG?.title ?: "LUKİTV Özel Yayın Kuşağı",
                                     style = MaterialTheme.typography.titleLarge,
                                     color = TextPrimary
                                 )

@@ -4,6 +4,7 @@ import com.example.domain.model.IPTVChannel
 import java.util.Locale
 
 object CategoryHelper {
+    const val CAT_ALL = "📺 Tümü"
     const val CAT_TR = "🇹🇷 Türkiye"
     const val CAT_NEWS = "📰 Haber"
     const val CAT_SPORTS = "⚽ Spor"
@@ -40,7 +41,7 @@ object CategoryHelper {
             searchStr.contains("italy") || searchStr.contains("italya") || searchStr.contains("it:") || searchStr.contains("[it]") -> "İtalya"
             searchStr.contains("spain") || searchStr.contains("ispanya") || searchStr.contains("es:") || searchStr.contains("[es]") -> "İspanya"
             searchStr.contains("russia") || searchStr.contains("rusya") || searchStr.contains("ru:") || searchStr.contains("[ru]") -> "Rusya"
-            searchStr.contains("türkiye") || searchStr.contains("turkey") || searchStr.contains("tr:") || searchStr.contains("[tr]") || searchStr.contains(" tr ") || defaultLanguage == "tr" -> "Türkiye"
+            searchStr.contains("türkiye") || searchStr.contains("turkey") || searchStr.contains("turkiye") || searchStr.contains("türk") || searchStr.contains("turk") || searchStr.contains("tr:") || searchStr.contains("[tr]") || searchStr.contains(" tr ") || searchStr.startsWith("tr ") || searchStr.startsWith("tr:") || searchStr.contains(" tr-") || searchStr.contains(" tr|") || searchStr.contains("trt") || defaultLanguage == "tr" -> "Türkiye"
             else -> "Global / Diğer"
         }
     }

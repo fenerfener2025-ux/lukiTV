@@ -1,19 +1,22 @@
 package com.example.domain.search
 
 import com.example.domain.model.IPTVChannel
+import com.example.domain.util.SmartChannelSorter
 import java.util.Locale
 import kotlin.math.min
 
 class FuzzySearchEngine {
     private val trigramIndex = mutableMapOf<String, MutableSet<String>>() // trigram -> set of channelIds
+    private var channelsList = emptyList<IPTVChannel>()
     private var channelsMap = emptyMap<String, IPTVChannel>()
 
     fun buildIndex(channels: List<IPTVChannel>) {
         trigramIndex.clear()
+        channelsList = channels
         channelsMap = channels.associateBy { it.id }
 
         for (channel in channels) {
-            val normalized = channel.normalizedName
+            val normalized = IPTVChannel.normalize(channel.name)
             val trigrams = getTrigrams(normalized)
             for (trigram in trigrams) {
                 trigramIndex.getOrPut(trigram) { mutableSetOf() }.add(channel.id)
@@ -30,78 +33,105 @@ class FuzzySearchEngine {
         return trigrams
     }
 
-    // Levenshtein distance calculation
     private fun getLevenshteinDistance(s1: String, s2: String): Int {
         val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
 
-        for (i in 0..s1.length) {
-            dp[i][0] = i
-        }
-        for (j in 0..s2.length) {
-            dp[0][j] = j
-        }
+        for (i in 0..s1.length) dp[i][0] = i
+        for (j in 0..s2.length) dp[0][j] = j
 
         for (i in 1..s1.length) {
             for (j in 1..s2.length) {
                 val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
                 dp[i][j] = minOf(
-                    dp[i - 1][j] + 1, // deletion
-                    dp[i][j - 1] + 1, // insertion
-                    dp[i - 1][j - 1] + cost // substitution
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + cost
                 )
             }
         }
         return dp[s1.length][s2.length]
     }
 
-    fun search(query: String): List<IPTVChannel> {
-        val normalizedQuery = IPTVChannel.normalize(query)
-        if (normalizedQuery.isEmpty()) return emptyList()
+    /**
+     * Intelligent multi-token search filtering
+     */
+    fun search(query: String, categoryFilter: String = "Tümü", qualityFilter: String = "Tümü"): List<IPTVChannel> {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isEmpty() && categoryFilter == "Tümü" && qualityFilter == "Tümü") {
+            return emptyList()
+        }
 
-        val queryTrigrams = getTrigrams(normalizedQuery)
-        val candidateScores = mutableMapOf<String, Double>() // channelId -> score
+        val rawNormalizedQuery = IPTVChannel.normalize(trimmedQuery)
+        val queryTokens = rawNormalizedQuery.split(" ").filter { it.isNotEmpty() }
 
-        // Phase 1: Retrieve candidate channels using Trigrams
-        for (trigram in queryTrigrams) {
-            val matchingIds = trigramIndex[trigram] ?: continue
-            for (id in matchingIds) {
-                val score = candidateScores.getOrDefault(id, 0.0)
-                candidateScores[id] = score + 1.0
+        val candidateChannels = channelsList.filter { channel ->
+            // Category filter
+            val matchesCategory = when (categoryFilter) {
+                "Tümü" -> true
+                "Favoriler" -> channel.isFavorite
+                else -> channel.category.contains(categoryFilter, ignoreCase = true) ||
+                        channel.groupTitle.contains(categoryFilter, ignoreCase = true)
             }
+
+            // Quality filter
+            val matchesQuality = when (qualityFilter) {
+                "Tümü" -> true
+                "4K / UHD" -> channel.name.contains("4K", ignoreCase = true) || channel.name.contains("UHD", ignoreCase = true)
+                "FHD / 1080p" -> channel.name.contains("FHD", ignoreCase = true) || channel.name.contains("1080", ignoreCase = true)
+                "HD / 720p" -> channel.name.contains("HD", ignoreCase = true) || channel.name.contains("720", ignoreCase = true)
+                "SD" -> !channel.name.contains("HD", ignoreCase = true) && !channel.name.contains("FHD", ignoreCase = true) && !channel.name.contains("4K", ignoreCase = true)
+                else -> true
+            }
+
+            matchesCategory && matchesQuality
+        }
+
+        if (trimmedQuery.isEmpty()) {
+            return SmartChannelSorter.sortSmartly(candidateChannels, option = "En Popüler")
         }
 
         val results = mutableListOf<ScoredResult>()
 
-        // Phase 2: Refine and score candidates
-        for ((id, trigramMatchCount) in candidateScores) {
-            val channel = channelsMap[id] ?: continue
-            val normName = channel.normalizedName
+        for (channel in candidateChannels) {
+            val nameRaw = channel.name.lowercase(Locale.ROOT)
+            val normName = IPTVChannel.normalize(channel.name)
+            val fullMeta = "$normName ${channel.category.lowercase(Locale.ROOT)} ${channel.groupTitle.lowercase(Locale.ROOT)}"
 
-            // Trigram Score (ratio of matching trigrams)
-            val queryTrigramCount = queryTrigrams.size.toDouble()
-            val trigramScore = if (queryTrigramCount > 0) trigramMatchCount / queryTrigramCount else 0.0
+            var tokenMatchCount = 0
+            var exactPrefixCount = 0
 
-            // Prefix Bonus: If channel starts with query
-            val prefixBonus = if (normName.startsWith(normalizedQuery)) 1.0 else 0.0
+            for (token in queryTokens) {
+                if (normName.contains(token) || nameRaw.contains(token) || fullMeta.contains(token)) {
+                    tokenMatchCount++
+                    if (normName.startsWith(token) || nameRaw.startsWith(token)) {
+                        exactPrefixCount++
+                    }
+                } else if (token.length >= 3) {
+                    // Check Levenshtein fuzzy match on words in normName
+                    val words = normName.split(" ")
+                    val hasFuzzyMatch = words.any { word -> getLevenshteinDistance(token, word) <= 1 }
+                    if (hasFuzzyMatch) {
+                        tokenMatchCount++
+                    }
+                }
+            }
 
-            // Popularity Bonus: if favorite, give a slight boost
-            val popularBonus = if (channel.isFavorite) 1.0 else 0.0
+            if (tokenMatchCount > 0) {
+                val tokenRatio = tokenMatchCount.toDouble() / queryTokens.size.toDouble()
+                val prefixBonus = exactPrefixCount * 0.4
+                val popularBonus = if (channel.isFavorite) 0.5 else 0.0
+                val majorRankBonus = (1000 - SmartChannelSorter.getMajorChannelRank(channel)) / 1000.0
+                val qualityBonus = SmartChannelSorter.getQualityScore(channel) / 100.0
 
-            // Calculate Levenshtein distance
-            val distance = getLevenshteinDistance(normalizedQuery, normName)
+                val totalScore = (tokenRatio * 2.0) + prefixBonus + popularBonus + majorRankBonus + qualityBonus
 
-            // Let's check edit distance threshold. We want candidates close in Levenshtein distance,
-            // or if the query is a substring of the channel name.
-            val isMatch = distance <= 2 || normName.contains(normalizedQuery) || trigramScore > 0.3
-
-            if (isMatch) {
-                // Score formula: trigramScore * 0.6 + prefixBonus * 0.3 + popularBonus * 0.1
-                val score = (trigramScore * 0.6) + (prefixBonus * 0.3) + (popularBonus * 0.1)
-                results.add(ScoredResult(channel, score))
+                // Must match at least majority of tokens unless query is single token
+                if (queryTokens.size <= 1 || tokenMatchCount >= (queryTokens.size - 1)) {
+                    results.add(ScoredResult(channel, totalScore))
+                }
             }
         }
 
-        // Sort by score descending
         return results.sortedByDescending { it.score }.map { it.channel }
     }
 

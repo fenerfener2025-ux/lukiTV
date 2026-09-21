@@ -9,9 +9,10 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 
 class Media3Engine : PlayerEngine {
     override val name: String = "Media3 (ExoPlayer)"
@@ -32,31 +33,62 @@ class Media3Engine : PlayerEngine {
 
         override fun onPlayerError(error: PlaybackException) {
             Log.e("Media3Engine", "ExoPlayer Error: ${error.message}", error)
-            listener?.onError(error.message ?: "Playback Error")
+            val turkishMessage = when (error.errorCode) {
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+                    "Ağ bağlantısı kurulamadı veya sunucu zaman aşımına uğradı."
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+                    "Yayın sunucusu yanıt vermedi (HTTP Hatası)."
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+                PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
+                    "Yayın akışı formatı çözümlenemedi."
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ->
+                    "Cihaz bu video çözücüsünü desteklemiyor."
+                else -> "Yayın akışı oynatılamadı. Sunucu çevrimdışı olabilir."
+            }
+            listener?.onError(turkishMessage)
         }
     }
 
     override fun initialize(context: Context) {
         if (exoPlayer == null) {
             val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(8000)
                 .setReadTimeoutMs(8000)
-                .setDefaultRequestProperties(mapOf("Referer" to "https://google.com/"))
             
+            // Fast start load control for instant zapping and smooth playback
             val loadControl = DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
-                    DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
-                    2500, // min buffer to start playback
-                    5000 // min buffer to resume playback
-                ).build()
+                    15000, // minBufferMs
+                    30000, // maxBufferMs
+                    800,   // bufferForPlaybackMs (instant start)
+                    1500   // bufferForPlaybackAfterRebufferMs
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
 
             val mediaSourceFactory = DefaultMediaSourceFactory(context)
                 .setDataSourceFactory(httpDataSourceFactory)
 
-            exoPlayer = ExoPlayer.Builder(context)
+            // Setup renderers with preferred hardware/software codecs
+            val renderersFactory = DefaultRenderersFactory(context).apply {
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+                setAllowedVideoJoiningTimeMs(4000)
+            }
+
+            // Adaptive track selector that smoothly supports HD and 4K without forcing incompatible tracks
+            val trackSelector = DefaultTrackSelector(context).apply {
+                parameters = buildUponParameters()
+                    .setMaxVideoSize(3840, 2160)
+                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                    .setAllowVideoNonSeamlessAdaptiveness(true)
+                    .build()
+            }
+
+            exoPlayer = ExoPlayer.Builder(context, renderersFactory)
+                .setTrackSelector(trackSelector)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setLoadControl(loadControl)
                 .build()
@@ -71,7 +103,14 @@ class Media3Engine : PlayerEngine {
     override fun play(url: String) {
         exoPlayer?.let { player ->
             try {
-                val mediaItem = MediaItem.fromUri(Uri.parse(url))
+                val mediaItem = if (url.contains(".m3u8", ignoreCase = true)) {
+                    MediaItem.Builder()
+                        .setUri(Uri.parse(url))
+                        .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+                        .build()
+                } else {
+                    MediaItem.fromUri(Uri.parse(url))
+                }
                 player.setMediaItem(mediaItem)
                 player.prepare()
                 player.play()
