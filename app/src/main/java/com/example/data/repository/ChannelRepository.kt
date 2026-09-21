@@ -32,30 +32,58 @@ data class PresetSource(
 val OPEN_SOURCE_PRESETS = listOf(
     PresetSource(
         name = "iptv-org Türkiye",
-        description = "Resmi Türk ulusal ve tematik açık kaynak canlı yayınları",
+        description = "Resmi Türk ulusal, haber, spor, müzik ve yerel canlı yayınları (Öncelikli)",
         url = "https://iptv-org.github.io/iptv/countries/tr.m3u",
         category = "TR",
         defaultLanguage = "tr"
     ),
     PresetSource(
         name = "iptv-org Spor",
-        description = "Dünya genelinden açık yayın spor kanalları",
+        description = "Uluslararası açık yayın spor ve motor sporları kanalları",
         url = "https://iptv-org.github.io/iptv/categories/sports.m3u",
         category = "Spor",
         defaultLanguage = "en"
     ),
     PresetSource(
-        name = "iptv-org Dünya Geneli",
-        description = "8000+ uluslararası açık yayın ve kamu kanalları",
-        url = "https://iptv-org.github.io/iptv/index.m3u",
-        category = "Global",
+        name = "iptv-org Sinema & Filmler",
+        description = "Uluslararası kamuya açık sinema, bağımsız film ve dizi kanalları",
+        url = "https://iptv-org.github.io/iptv/categories/movies.m3u",
+        category = "Sinema",
+        defaultLanguage = "en"
+    ),
+    PresetSource(
+        name = "iptv-org Belgesel",
+        description = "Doğa, bilim, tarih ve vahşi yaşam belgesel yayınları",
+        url = "https://iptv-org.github.io/iptv/categories/documentary.m3u",
+        category = "Belgesel",
+        defaultLanguage = "en"
+    ),
+    PresetSource(
+        name = "iptv-org Çocuk & Eğlence",
+        description = "Eğitici çocuk programları, çizgi filmler ve animasyon kanalları",
+        url = "https://iptv-org.github.io/iptv/categories/kids.m3u",
+        category = "Çocuk",
+        defaultLanguage = "en"
+    ),
+    PresetSource(
+        name = "iptv-org Müzik",
+        description = "Dünya genelinden pop, rock, klasik ve caz müzik televizyonları",
+        url = "https://iptv-org.github.io/iptv/categories/music.m3u",
+        category = "Müzik",
         defaultLanguage = "en"
     ),
     PresetSource(
         name = "iptv-org Haber",
-        description = "Uluslararası açık erişim haber kanalları",
+        description = "Uluslararası açık erişim canlı haber ve gündem kanalları",
         url = "https://iptv-org.github.io/iptv/categories/news.m3u",
         category = "Haber",
+        defaultLanguage = "en"
+    ),
+    PresetSource(
+        name = "iptv-org Dünya Geneli",
+        description = "8000+ uluslararası açık yayın ve resmi kamu televizyonları",
+        url = "https://iptv-org.github.io/iptv/index.m3u",
+        category = "Global",
         defaultLanguage = "en"
     )
 )

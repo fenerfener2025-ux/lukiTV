@@ -23,6 +23,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -50,6 +57,18 @@ fun SilentPreviewPlayer(
     val palette = LocalThemeConfig.current.palette
 
     var playerState by remember { mutableStateOf<PreviewPlayerState>(PreviewPlayerState.Idle) }
+
+    // Smooth transition crossfade for preview player
+    val isPreviewReady = playerState == PreviewPlayerState.Playing
+    val previewAlpha by animateFloatAsState(
+        targetValue = if (isPreviewReady) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (isPreviewReady) 500 else 200, // Faster fade for quick scrolling
+            easing = LinearEasing
+        ),
+        label = "PreviewCrossfade"
+    )
+
     val streamUrl = channel?.streamUrl
 
     // Lightweight ExoPlayer for preview
@@ -106,6 +125,28 @@ fun SilentPreviewPlayer(
         }
     }
 
+    // Add lifecycle observer to pause/resume ExoPlayer safely based on Activity lifecycle
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    exoPlayer.pause()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (streamUrl != null && streamUrl.isNotBlank()) {
+                        exoPlayer.play()
+                    }
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     // Watch channel stream source updates
     LaunchedEffect(streamUrl) {
         if (streamUrl != null && streamUrl.isNotBlank()) {
@@ -150,7 +191,9 @@ fun SilentPreviewPlayer(
                             )
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(alpha = previewAlpha)
                 )
 
                 // Silent mode indicator badge overlay (Mute)

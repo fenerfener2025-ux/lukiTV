@@ -261,6 +261,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Self-healing automatic background channel updates on launch to ensure long-term link viability
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = allChannels.first()
+            if (existing.isNotEmpty()) {
+                delay(10000) // Delay to ensure app initializes and becomes fully active
+                Log.d("MainViewModel", "Auto-updating open-source preset in background to heal link sources...")
+                val trPreset = com.example.data.repository.OPEN_SOURCE_PRESETS.firstOrNull()
+                if (trPreset != null) {
+                    repository.loadPresetSource(trPreset) { /* silent progress */ }
+                }
+            }
+        }
+
         // Keep search engine index updated
         viewModelScope.launch {
             allChannels.collect { list ->

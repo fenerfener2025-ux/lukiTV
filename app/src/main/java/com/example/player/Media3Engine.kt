@@ -18,17 +18,28 @@ class Media3Engine : PlayerEngine {
     override val name: String = "Media3 (ExoPlayer)"
     private var exoPlayer: ExoPlayer? = null
     private var listener: PlayerEngine.EngineListener? = null
+    private var trackSelector: DefaultTrackSelector? = null
+    
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var restoreQualityRunnable: Runnable? = null
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
             val isLoading = state == Player.STATE_BUFFERING
             val isPlaying = exoPlayer?.isPlaying == true
             listener?.onPlaybackStateChanged(isPlaying, isLoading)
+            
+            if (state == Player.STATE_READY) {
+                scheduleRestoreFullQuality()
+            }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             val isLoading = exoPlayer?.playbackState == Player.STATE_BUFFERING
             listener?.onPlaybackStateChanged(isPlaying, isLoading)
+            if (isPlaying) {
+                scheduleRestoreFullQuality()
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -48,6 +59,28 @@ class Media3Engine : PlayerEngine {
             }
             listener?.onError(turkishMessage)
         }
+    }
+
+    private fun scheduleRestoreFullQuality() {
+        restoreQualityRunnable?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            exoPlayer?.let { player ->
+                if (player.playbackState == Player.STATE_READY) {
+                    trackSelector?.let { selector ->
+                        val currentParams = selector.parameters
+                        if (currentParams.forceLowestBitrate) {
+                            Log.d("Media3Engine", "Restoring full video quality adaptively.")
+                            selector.setParameters(
+                                selector.buildUponParameters()
+                                    .setForceLowestBitrate(false)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        restoreQualityRunnable = runnable
+        mainHandler.postDelayed(runnable, 1500) // 1.5 seconds delay is the perfect handshake window
     }
 
     override fun initialize(context: Context) {
@@ -86,7 +119,8 @@ class Media3Engine : PlayerEngine {
                     .setAllowVideoNonSeamlessAdaptiveness(true)
                     .build()
             }
-
+            this.trackSelector = trackSelector
+            
             exoPlayer = ExoPlayer.Builder(context, renderersFactory)
                 .setTrackSelector(trackSelector)
                 .setMediaSourceFactory(mediaSourceFactory)
@@ -103,6 +137,14 @@ class Media3Engine : PlayerEngine {
     override fun play(url: String) {
         exoPlayer?.let { player ->
             try {
+                // Instantly force lowest bitrate track to make zapping / buffer load incredibly fast!
+                trackSelector?.let { selector ->
+                    selector.setParameters(
+                        selector.buildUponParameters()
+                            .setForceLowestBitrate(true)
+                    )
+                }
+
                 val mediaItem = if (url.contains(".m3u8", ignoreCase = true)) {
                     MediaItem.Builder()
                         .setUri(Uri.parse(url))
@@ -121,15 +163,18 @@ class Media3Engine : PlayerEngine {
     }
 
     override fun stop() {
+        restoreQualityRunnable?.let { mainHandler.removeCallbacks(it) }
         exoPlayer?.stop()
     }
 
     override fun release() {
+        restoreQualityRunnable?.let { mainHandler.removeCallbacks(it) }
         exoPlayer?.let { player ->
             player.removeListener(playerListener)
             player.release()
         }
         exoPlayer = null
+        trackSelector = null
     }
 
     override fun getPlayer(): Player? = exoPlayer

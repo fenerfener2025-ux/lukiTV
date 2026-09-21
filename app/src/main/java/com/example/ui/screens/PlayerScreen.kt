@@ -56,6 +56,10 @@ import com.example.ui.components.rememberKeyboardInputHandler
 import com.example.ui.components.ChannelNumberHUD
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
 
 @Composable
@@ -107,6 +111,17 @@ fun PlayerScreen(
     var isMuted by remember { mutableStateOf(activePlayerInstance?.volume == 0f) }
     var volumeLevel by remember { mutableStateOf((activePlayerInstance?.volume ?: 1f) * 100) }
     var showVolumeHUD by remember { mutableStateOf(false) }
+
+    // Transition crossfade animation for ExoPlayer
+    val isPlayerReady = playbackState is PlayerEngineManager.PlaybackState.Playing
+    val videoAlpha by animateFloatAsState(
+        targetValue = if (isPlayerReady) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (isPlayerReady) 600 else 250, // Slower fade-in, faster fade-out
+            easing = LinearEasing
+        ),
+        label = "VideoCrossfade"
+    )
 
     // Use remember for key event handling
     val focusRequester = remember { FocusRequester() }
@@ -361,7 +376,9 @@ fun PlayerScreen(
                 pv.player = null
                 pv.onPause()
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(alpha = videoAlpha)
         )
 
         if (!isInPictureInPicture) {

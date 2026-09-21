@@ -65,6 +65,7 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToDetail: (IPTVChannel) -> Unit,
     onNavigateToAddPlaylist: () -> Unit,
+    isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val allChannels by viewModel.allChannels.collectAsState()
@@ -153,7 +154,8 @@ fun HomeScreen(
                 onNavigateToPlayer = onNavigateToPlayer,
                 onNavigateToDetail = onNavigateToDetail,
                 onNavigateToSearch = onNavigateToSearch,
-                onNavigateToAddPlaylist = onNavigateToAddPlaylist
+                onNavigateToAddPlaylist = onNavigateToAddPlaylist,
+                isActive = isActive
             )
         }
     }
@@ -179,6 +181,7 @@ fun MobileHomeScreen(
     onNavigateToDetail: (IPTVChannel) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToAddPlaylist: () -> Unit,
+    isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val palette = LocalThemeConfig.current.palette
@@ -567,7 +570,7 @@ fun MobileHomeScreen(
                                 )
 
                                 SilentPreviewPlayer(
-                                    channel = focusedChannel,
+                                    channel = if (isActive) focusedChannel else null,
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
@@ -638,7 +641,7 @@ fun MobileHomeScreen(
                                     .padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 SilentPreviewPlayer(
-                                    channel = focusedChannel,
+                                    channel = if (isActive) focusedChannel else null,
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
