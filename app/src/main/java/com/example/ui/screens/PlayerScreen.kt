@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.data.repository.sortChannelsWithUserPreference
+import com.example.data.repository.PREFERRED_TURKISH_ORDER
 import com.example.ui.tv.dpadFocusable
 import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.foundation.lazy.list.items as tvItems
@@ -21,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Close
@@ -75,33 +78,47 @@ fun PlayerScreen(
     val allChannels by viewModel.allChannels.collectAsState()
     val activePlayerInstance by viewModel.playerEngineManager.activePlayer.collectAsState()
 
-    val categoryPriority = remember {
-        { cat: String ->
-            when {
-                cat.equals(CategoryHelper.CAT_NATIONAL, ignoreCase = true) -> 1
-                cat.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) -> 2
-                cat.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) -> 3
-                cat.equals(CategoryHelper.CAT_MUSIC, ignoreCase = true) -> 4
-                cat.equals(CategoryHelper.CAT_LOCAL, ignoreCase = true) -> 5
-                cat.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) -> 6
-                cat.equals(CategoryHelper.CAT_KIDS, ignoreCase = true) -> 7
-                cat.equals(CategoryHelper.CAT_DOCUMENTARY, ignoreCase = true) -> 8
-                cat.equals(CategoryHelper.CAT_TR, ignoreCase = true) -> 9
-                cat.equals(CategoryHelper.CAT_WORLD, ignoreCase = true) -> 10
-                else -> 100
-            }
+    val recentChannels by viewModel.recentChannels.collectAsState()
+    val favoriteChannels by viewModel.favoriteChannels.collectAsState()
+
+    val isWorldTabActive by viewModel.isWorldTabActive.collectAsState()
+    val worldSelectedCountry by viewModel.worldSelectedCountry.collectAsState()
+    val worldSelectedGenre by viewModel.worldSelectedGenre.collectAsState()
+
+    val turkishChannels = remember(allChannels) {
+        val filtered = allChannels.filter { chan ->
+            val detectedCountry = CategoryHelper.detectCountry(chan.name, chan.groupTitle)
+            detectedCountry == "Türkiye"
         }
-    }
-    val sortedZapChannels = remember(allChannels) {
-        allChannels.sortedWith(
-            compareByDescending<IPTVChannel> { it.isFavorite }
-                .thenBy { categoryPriority(it.category) }
-                .thenBy { it.name }
+        val list = if (filtered.isNotEmpty()) filtered else allChannels
+        list.sortedWith(
+            compareBy<IPTVChannel> {
+                val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
+                if (idx != -1) idx else (1000 + CategoryHelper.getCategoryPriority(it.category))
+            }.thenBy { it.name }
         )
+    }
+
+    val sortedZapChannels = remember(allChannels, isWorldTabActive, worldSelectedCountry, worldSelectedGenre) {
+        sortChannelsWithUserPreference(
+            channels = allChannels,
+            isWorldTab = isWorldTabActive,
+            selectedCountry = worldSelectedCountry,
+            selectedGenre = worldSelectedGenre
+        )
+    }
+
+    val activeZapSequence = remember(allChannels, turkishChannels, isWorldTabActive, sortedZapChannels) {
+        if (isWorldTabActive) sortedZapChannels
+        else if (turkishChannels.isNotEmpty()) turkishChannels
+        else allChannels
     }
 
     var showControls by remember { mutableStateOf(false) }
     var showZapList by remember { mutableStateOf(false) }
+    var zapCategoryIndex by remember { mutableIntStateOf(1) } // Default: 1 (Türk Kanalları)
+    var showOSD by remember { mutableStateOf(false) }
+    var osdChannel by remember { mutableStateOf<IPTVChannel?>(null) }
     var showZapOverlay by remember { mutableStateOf(false) }
     var showComfortCheck by remember { mutableStateOf(false) }
     var showEPGGuide by remember { mutableStateOf(false) }
@@ -132,23 +149,37 @@ fun PlayerScreen(
     // Dedicated Keyboard & D-Pad Input Handler with direct channel number tuning
     val keyboardInputHandler = rememberKeyboardInputHandler(
         onNavigateUp = {
-            val currentIndex = allChannels.indexOf(activeChannel)
-            if (currentIndex >= 0 && allChannels.isNotEmpty()) {
-                val prevIndex = if (currentIndex > 0) currentIndex - 1 else allChannels.size - 1
-                viewModel.selectChannel(allChannels[prevIndex])
+            if (!showZapList && !showControls && !showEPGGuide && activeZapSequence.isNotEmpty()) {
+                val currentIndex = activeZapSequence.indexOfFirst { it.id == activeChannel?.id }
+                val prevIndex = if (currentIndex > 0) currentIndex - 1 else activeZapSequence.size - 1
+                val target = activeZapSequence[prevIndex]
+                viewModel.selectChannel(target)
+                osdChannel = target
+                showOSD = true
             }
         },
         onNavigateDown = {
-            val currentIndex = allChannels.indexOf(activeChannel)
-            if (currentIndex >= 0 && allChannels.isNotEmpty()) {
-                val nextIndex = if (currentIndex < allChannels.size - 1) currentIndex + 1 else 0
-                viewModel.selectChannel(allChannels[nextIndex])
+            if (!showZapList && !showControls && !showEPGGuide && activeZapSequence.isNotEmpty()) {
+                val currentIndex = activeZapSequence.indexOfFirst { it.id == activeChannel?.id }
+                val nextIndex = if (currentIndex >= 0 && currentIndex < activeZapSequence.size - 1) currentIndex + 1 else 0
+                val target = activeZapSequence[nextIndex]
+                viewModel.selectChannel(target)
+                osdChannel = target
+                showOSD = true
             }
         },
         onNumberCommitted = { channelNum ->
             viewModel.playChannelByNumber(channelNum)
         }
     )
+
+    // Auto-hide channel switch OSD (2.5 seconds)
+    LaunchedEffect(osdChannel, showOSD) {
+        if (showOSD) {
+            delay(2500)
+            showOSD = false
+        }
+    }
 
     // Keep state in sync with actual Media3 Player state
     DisposableEffect(activePlayerInstance) {
@@ -243,14 +274,6 @@ fun PlayerScreen(
         focusRequester.requestFocus()
     }
 
-    var playerView: PlayerView? by remember { mutableStateOf(null) }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            playerView?.player = null
-        }
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -266,21 +289,27 @@ fun PlayerScreen(
                 }
                 if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
-                        android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_CHANNEL_UP -> {
-                            val currentIndex = allChannels.indexOf(activeChannel)
-                            if (currentIndex >= 0 && allChannels.isNotEmpty()) {
-                                val nextIndex = if (currentIndex > 0) currentIndex - 1 else allChannels.size - 1
-                                viewModel.selectChannel(allChannels[nextIndex])
-                            }
-                            true
+                        android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_CHANNEL_UP, android.view.KeyEvent.KEYCODE_PAGE_UP -> {
+                            if (!showZapList && !showControls && !showEPGGuide && activeZapSequence.isNotEmpty()) {
+                                val currentIndex = activeZapSequence.indexOfFirst { it.id == activeChannel?.id }
+                                val prevIndex = if (currentIndex > 0) currentIndex - 1 else activeZapSequence.size - 1
+                                val target = activeZapSequence[prevIndex]
+                                viewModel.selectChannel(target)
+                                osdChannel = target
+                                showOSD = true
+                                true
+                            } else false
                         }
-                        android.view.KeyEvent.KEYCODE_DPAD_DOWN, android.view.KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                            val currentIndex = allChannels.indexOf(activeChannel)
-                            if (currentIndex >= 0 && allChannels.isNotEmpty()) {
-                                val nextIndex = if (currentIndex < allChannels.size - 1) currentIndex + 1 else 0
-                                viewModel.selectChannel(allChannels[nextIndex])
-                            }
-                            true
+                        android.view.KeyEvent.KEYCODE_DPAD_DOWN, android.view.KeyEvent.KEYCODE_CHANNEL_DOWN, android.view.KeyEvent.KEYCODE_PAGE_DOWN -> {
+                            if (!showZapList && !showControls && !showEPGGuide && activeZapSequence.isNotEmpty()) {
+                                val currentIndex = activeZapSequence.indexOfFirst { it.id == activeChannel?.id }
+                                val nextIndex = if (currentIndex >= 0 && currentIndex < activeZapSequence.size - 1) currentIndex + 1 else 0
+                                val target = activeZapSequence[nextIndex]
+                                viewModel.selectChannel(target)
+                                osdChannel = target
+                                showOSD = true
+                                true
+                            } else false
                         }
                         android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
                             if (!showControls && !showEPGGuide) {
@@ -294,9 +323,11 @@ fun PlayerScreen(
                                 true
                             } else false
                         }
-                        android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
-                            showZapList = !showZapList
-                            true
+                        android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                            if (!showZapList && !showControls && !showEPGGuide) {
+                                showZapList = true
+                                true
+                            } else false
                         }
                         android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
                             activePlayerInstance?.let { player ->
@@ -359,7 +390,6 @@ fun PlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     player = activePlayerInstance
-                    playerView = this
                     onResume()
                 }
             },
@@ -376,10 +406,17 @@ fun PlayerScreen(
                 pv.player = null
                 pv.onPause()
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(alpha = videoAlpha)
+            modifier = Modifier.fillMaxSize()
         )
+
+        // Smooth video transition scrim overlay (prevents invalid SurfaceView alpha compositing errors)
+        if (videoAlpha < 1f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = (1f - videoAlpha).coerceIn(0f, 1f)))
+            )
+        }
 
         if (!isInPictureInPicture) {
             // Loading and Buffering overlays
@@ -796,103 +833,403 @@ fun PlayerScreen(
             }
         }
 
-        // Mini Sidebar Channel List (Fast Zap Panel) - Left aligned, translucent background, custom sorted
+        // Categorized Zap Drawer - Left aligned (Turkish first, then World, Genres, Favorites, Recents)
+        val zapCategories = remember {
+            listOf(
+                Triple(0, Icons.Default.Tv, "Türk Kanalları"),
+                Triple(1, Icons.Default.Public, "Dünya Kanalları"),
+                Triple(2, Icons.Default.SportsSoccer, "Spor"),
+                Triple(3, Icons.Default.Article, "Haber"),
+                Triple(4, Icons.Default.Movie, "Sinema & Dizi"),
+                Triple(5, Icons.Default.Explore, "Belgesel"),
+                Triple(6, Icons.Default.Favorite, "Favoriler"),
+                Triple(7, Icons.Default.History, "Son İzlenenler")
+            )
+        }
+
+        val displayedZapChannels = remember(zapCategoryIndex, allChannels, turkishChannels, recentChannels, favoriteChannels) {
+            when (zapCategoryIndex) {
+                0 -> turkishChannels
+                1 -> allChannels.filter {
+                    val country = CategoryHelper.detectCountry(it.name, it.groupTitle)
+                    country != "Türkiye"
+                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                2 -> allChannels.filter {
+                    it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) ||
+                    it.name.contains("spor", ignoreCase = true) ||
+                    it.name.contains("sport", ignoreCase = true) ||
+                    it.name.contains("bein", ignoreCase = true)
+                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                3 -> allChannels.filter {
+                    it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) ||
+                    it.name.contains("haber", ignoreCase = true) ||
+                    it.name.contains("news", ignoreCase = true)
+                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                4 -> allChannels.filter {
+                    it.category.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) ||
+                    it.name.contains("sinema", ignoreCase = true) ||
+                    it.name.contains("film", ignoreCase = true) ||
+                    it.name.contains("dizi", ignoreCase = true)
+                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                5 -> allChannels.filter {
+                    it.category.equals(CategoryHelper.CAT_DOCUMENTARY, ignoreCase = true) ||
+                    it.name.contains("belgesel", ignoreCase = true) ||
+                    it.name.contains("docu", ignoreCase = true) ||
+                    it.name.contains("discovery", ignoreCase = true) ||
+                    it.name.contains("geographic", ignoreCase = true)
+                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                6 -> favoriteChannels
+                7 -> recentChannels
+                else -> turkishChannels
+            }
+        }
+
+        // Mini Sidebar Channel List (Fast Zap Panel) - Left aligned, sleek categorized drawer
         AnimatedVisibility(
             visible = showZapList,
             enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
             modifier = Modifier.align(Alignment.CenterStart)
         ) {
-            Box(
+            Surface(
+                color = Color(0xFF070F26).copy(alpha = 0.95f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
+                shadowElevation = 24.dp,
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(300.dp)
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .padding(16.dp)
+                    .width(440.dp)
             ) {
-                Column {
-                    Text(
-                        text = "Kanal Listesi",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = AuroraCyan,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    val zapState = androidx.tv.foundation.lazy.list.rememberTvLazyListState()
-                    TvLazyColumn(
-                        state = zapState,
-                        pivotOffsets = androidx.tv.foundation.PivotOffsets(0.15f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                Row(modifier = Modifier.fillMaxSize()) {
+                    // Left Categories Rail (130dp)
+                    Column(
+                        modifier = Modifier
+                            .width(135.dp)
+                            .fillMaxHeight()
+                            .background(Color(0xFF040816).copy(alpha = 0.96f))
+                            .border(BorderStroke(0.5.dp, Color.White.copy(alpha = 0.08f)))
+                            .padding(vertical = 12.dp, horizontal = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        tvItems(sortedZapChannels, key = { it.id }) { channel ->
-                            var isItemFocused by remember { mutableStateOf(false) }
-                            val isCurrent = channel.id == activeChannel?.id
+                        Text(
+                            text = "KATEGORİLER",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AuroraCyan,
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
 
-                            Card(
+                        zapCategories.forEach { (catIdx, catIcon, catName) ->
+                            val isSelected = zapCategoryIndex == catIdx
+                            var isCatFocused by remember { mutableStateOf(false) }
+
+                            Surface(
+                                color = when {
+                                    isCatFocused -> AuroraCyan.copy(alpha = 0.25f)
+                                    isSelected -> AuroraCyan.copy(alpha = 0.15f)
+                                    else -> Color.Transparent
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    when {
+                                        isCatFocused -> AuroraCyan
+                                        isSelected -> AuroraCyan.copy(alpha = 0.5f)
+                                        else -> Color.Transparent
+                                    }
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .dpadFocusable(
-                                        onSelect = {
-                                            viewModel.selectChannel(channel)
-                                            showZapList = false
-                                        },
-                                        onFocusChanged = { focused ->
-                                            isItemFocused = focused
-                                        }
-                                    ),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(
-                                    width = if (isItemFocused) 2.dp else 1.dp,
-                                    color = if (isItemFocused) AuroraCyan else if (isCurrent) AuroraPurple else Color.White.copy(alpha = 0.08f)
-                                ),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = when {
-                                        isItemFocused -> Color(0xFF1B2A58)
-                                        isCurrent -> SurfaceBlue
-                                        else -> SurfaceBlue.copy(alpha = 0.3f)
-                                    }
-                                )
+                                        onSelect = { zapCategoryIndex = catIdx },
+                                        onFocusChanged = { isCatFocused = it }
+                                    )
+                                    .clickable { zapCategoryIndex = catIdx }
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        .padding(horizontal = 6.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = channel.name,
-                                            style = MaterialTheme.typography.bodyLarge.copy(
-                                                fontWeight = if (isItemFocused || isCurrent) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
-                                            ),
-                                            color = if (isItemFocused || isCurrent) TextPrimary else TextSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = channel.category,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (isItemFocused) AuroraCyan else TextSecondary.copy(alpha = 0.7f)
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = catIcon,
+                                        contentDescription = null,
+                                        tint = if (isSelected || isCatFocused) AuroraCyan else Color.White.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = catName,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = if (isSelected || isCatFocused) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 10.sp
+                                        ),
+                                        color = if (isSelected || isCatFocused) Color.White else Color.White.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-                                    if (isCurrent) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Oynatılıyor",
-                                            tint = LiveRed,
-                                            modifier = Modifier.size(20.dp)
+                    // Right Channel List (305dp)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(horizontal = 10.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val curTitle = zapCategories.find { it.first == zapCategoryIndex }?.third ?: "Kanallar"
+                            Column {
+                                Text(
+                                    text = curTitle,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "${displayedZapChannels.size} kanal",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = Color.White.copy(alpha = 0.5f)
+                                )
+                            }
+                            IconButton(
+                                onClick = { showZapList = false },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Kapat",
+                                    tint = Color.White.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        if (displayedZapChannels.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Bu listede kanal yok.",
+                                    color = Color.White.copy(alpha = 0.5f),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        } else {
+                            val zapState = androidx.tv.foundation.lazy.list.rememberTvLazyListState()
+                            TvLazyColumn(
+                                state = zapState,
+                                pivotOffsets = androidx.tv.foundation.PivotOffsets(0.2f),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                tvItems(displayedZapChannels, key = { it.id }) { channel ->
+                                    var isItemFocused by remember { mutableStateOf(false) }
+                                    val isCurrent = channel.id == activeChannel?.id
+                                    val itemIndex = displayedZapChannels.indexOfFirst { it.id == channel.id }
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .dpadFocusable(
+                                                onSelect = {
+                                                    viewModel.selectChannel(channel)
+                                                    showZapList = false
+                                                },
+                                                onFocusChanged = { focused -> isItemFocused = focused }
+                                            )
+                                            .clickable {
+                                                viewModel.selectChannel(channel)
+                                                showZapList = false
+                                            },
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(
+                                            width = if (isItemFocused) 1.5.dp else 1.dp,
+                                            color = if (isItemFocused) AuroraCyan else if (isCurrent) LiveRed.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.08f)
+                                        ),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = when {
+                                                isItemFocused -> Color(0xFF162447)
+                                                isCurrent -> Color(0xFF1F102A)
+                                                else -> Color(0xFF0A132C).copy(alpha = 0.6f)
+                                            }
                                         )
-                                    } else if (isItemFocused) {
-                                        Text(
-                                            text = "OK",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Black),
-                                            color = AuroraCyan
-                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                        ) {
+                                            // Number badge
+                                            Surface(
+                                                color = if (isCurrent) LiveRed else Color.White.copy(alpha = 0.08f),
+                                                shape = RoundedCornerShape(4.dp),
+                                                modifier = Modifier.size(width = 24.dp, height = 20.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = "${itemIndex + 1}",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                        fontSize = 9.sp,
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
+
+                                            // Crisp Logo Box
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0xFF030712))
+                                                    .border(0.5.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                ChannelLogoImage(
+                                                    logoUrl = channel.logoUrl,
+                                                    category = channel.category,
+                                                    channelName = channel.name,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(2.dp)
+                                                )
+                                            }
+
+                                            // Channel Name & Category (clean text, not oversized)
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = channel.name,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontWeight = if (isItemFocused || isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                        fontSize = 11.sp
+                                                    ),
+                                                    color = if (isItemFocused || isCurrent) Color.White else Color.White.copy(alpha = 0.85f),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = channel.category.ifBlank { "Genel" },
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                                                    color = if (isItemFocused) AuroraCyan else Color.White.copy(alpha = 0.5f)
+                                                )
+                                            }
+
+                                            if (isCurrent) {
+                                                Surface(
+                                                    color = LiveRed,
+                                                    shape = RoundedCornerShape(3.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "YAYINDA",
+                                                        color = Color.White,
+                                                        fontSize = 7.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fast Channel Zapping OSD Banner (Shows when using Remote Up/Down or Channel +/-)
+        AnimatedVisibility(
+            visible = showOSD && !showZapList && !showControls,
+            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 36.dp)
+        ) {
+            val displayChan = osdChannel ?: activeChannel
+            displayChan?.let { chan ->
+                Surface(
+                    color = Color(0xFF070E24).copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, AuroraCyan.copy(alpha = 0.4f)),
+                    shadowElevation = 16.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Channel Logo
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF030712))
+                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(6.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ChannelLogoImage(
+                                logoUrl = chan.logoUrl,
+                                category = chan.category,
+                                channelName = chan.name,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(2.dp)
+                            )
+                        }
+
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(LiveRed)
+                                )
+                                Text(
+                                    text = "CANLI YAYIN",
+                                    color = LiveRed,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Surface(
+                                    color = AuroraCyan.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = chan.category.ifBlank { "Genel" },
+                                        color = AuroraCyan,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = chan.name,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                ),
+                                color = Color.White
+                            )
                         }
                     }
                 }

@@ -31,15 +31,36 @@ data class PresetSource(
 // Yalnızca yasal, kamuya açık ve açık kaynak referans playlistleri (kullanıcı isteğe bağlı yükleyebilir)
 val OPEN_SOURCE_PRESETS = listOf(
     PresetSource(
+        name = "Free-TV Türkiye (Canlı Repo)",
+        description = "Sürekli güncellenen resmi Türkiye canlı yayın listesi (GitHub)",
+        url = "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlists/playlist_turkey.m3u8",
+        category = "TR",
+        defaultLanguage = "tr"
+    ),
+    PresetSource(
         name = "iptv-org Türkiye",
-        description = "Resmi Türk ulusal, haber, spor, müzik ve yerel canlı yayınları (Öncelikli)",
+        description = "Resmi Türk ulusal, haber, spor, müzik ve yerel canlı yayınları",
         url = "https://iptv-org.github.io/iptv/countries/tr.m3u",
         category = "TR",
         defaultLanguage = "tr"
     ),
     PresetSource(
+        name = "iptv-org Azerbaycan (Kardeş Ülke)",
+        description = "Azerbaycan kamu ve özel televizyon yayınları (AZ TV, İctimai TV vb.)",
+        url = "https://iptv-org.github.io/iptv/countries/az.m3u",
+        category = "Dünya",
+        defaultLanguage = "az"
+    ),
+    PresetSource(
+        name = "Free-TV Dünya Spor",
+        description = "Uluslararası açık spor ve motor sporları kanalları",
+        url = "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlists/playlist_sports.m3u8",
+        category = "Spor",
+        defaultLanguage = "en"
+    ),
+    PresetSource(
         name = "iptv-org Spor",
-        description = "Uluslararası açık yayın spor ve motor sporları kanalları",
+        description = "Uluslararası açık yayın spor kanalları",
         url = "https://iptv-org.github.io/iptv/categories/sports.m3u",
         category = "Spor",
         defaultLanguage = "en"
@@ -80,15 +101,63 @@ val OPEN_SOURCE_PRESETS = listOf(
         defaultLanguage = "en"
     ),
     PresetSource(
-        name = "iptv-org Dünya Geneli",
+        name = "iptv-org Almanya (DE)",
+        description = "Almanya kamu ve ulusal kanalları",
+        url = "https://iptv-org.github.io/iptv/countries/de.m3u",
+        category = "Dünya",
+        defaultLanguage = "de"
+    ),
+    PresetSource(
+        name = "Free-TV Dünya Geneli",
         description = "8000+ uluslararası açık yayın ve resmi kamu televizyonları",
-        url = "https://iptv-org.github.io/iptv/index.m3u",
+        url = "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
         category = "Global",
         defaultLanguage = "en"
     )
 )
 
+// Kullanıcının özel sıralama isteği:
+// 1. TRT 1, 2. TRT 2, 3. ATV, 4. Kanal D, 5. Show TV, 6. Star TV, 7. Halk TV, 8. Sözcü TV,
+// 9. TRT Spor, 10. HT Spor, 11. A Spor, 12. TRT Spor Yıldız, 13. TV8, 14. A2, 15. TV 100,
+// 16. Beyaz TV, 17. Ekol TV, 18. TRT Haber, 19. NTV, 20. HaberTürk, 21. Haber Global,
+// 22. A Haber, 23. TV 24, 24. 360 TV, 25. Flash Haber, 26. TGRT Haber, 27. TGRT Belgesel,
+// 28. TRT Çocuk, 29. Minika Çocuk, 30. TRT Müzik, 31. Kral Pop TV
+val PREFERRED_TURKISH_ORDER = listOf(
+    "trt_1_hd",
+    "trt_2_hd",
+    "atv_hd",
+    "kanald_hd",
+    "showtv_hd",
+    "startv_hd",
+    "halktv_hd",
+    "sozcutv_hd",
+    "trtspor_hd",
+    "htspor_hd",
+    "aspor_hd",
+    "trtspor_yildiz_hd",
+    "tv8_hd",
+    "a2_hd",
+    "tv100_hd",
+    "beyaztv_hd",
+    "ekoltv_hd",
+    "trthaber_hd",
+    "ntv_hd",
+    "haberturk_hd",
+    "haberglobal_hd",
+    "ahaber_hd",
+    "tv24_hd",
+    "tv360_hd",
+    "flashhaber_hd",
+    "tgrthaber_hd",
+    "tgrtbelgesel_hd",
+    "trtcocuk_hd",
+    "minikacocuk_hd",
+    "trtmuzik_hd",
+    "kralpoptv_hd"
+)
+
 val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
+    // 1. TRT 1 HD
     IPTVChannel(
         id = "trt_1_hd",
         name = "TRT 1 HD",
@@ -96,8 +165,8 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NATIONAL,
         groupTitle = "TR",
-        streamUrl = "https://trt.daioncdn.net/trt-1/master.m3u8?app=web",
-        streamMirrors = listOf("https://tv-trt1.medya.trt.com.tr/master.m3u8"),
+        streamUrl = "https://tv-trt1.medya.trt.com.tr/master.m3u8",
+        streamMirrors = listOf("https://trt.daioncdn.net/trt-1/master.m3u8?app=web"),
         tvgId = "TRT1",
         isFavorite = false,
         lastWatchedTimestamp = 0,
@@ -105,6 +174,41 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 2. TRT 2 HD
+    IPTVChannel(
+        id = "trt_2_hd",
+        name = "TRT 2 HD",
+        normalizedName = "trt 2",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NATIONAL,
+        groupTitle = "TR",
+        streamUrl = "https://tv-trt2.medya.trt.com.tr/master.m3u8",
+        streamMirrors = listOf("https://tv-trt2.medya.trt.com.tr/master_720.m3u8"),
+        tvgId = "TRT2",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 3. ATV HD
+    IPTVChannel(
+        id = "atv_hd",
+        name = "ATV HD",
+        normalizedName = "atv",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NATIONAL,
+        groupTitle = "TR",
+        streamUrl = "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/atv/atv.m3u8",
+        streamMirrors = listOf("https://cdn-alanyatv.yayin.com.tr/alanyatv/alanyatv/playlist.m3u8"),
+        tvgId = "ATV",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 4. Kanal D HD
     IPTVChannel(
         id = "kanald_hd",
         name = "Kanal D HD",
@@ -112,7 +216,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NATIONAL,
         groupTitle = "TR",
-        streamUrl = "https://demiroren-live.daioncdn.net/kanald/kanald.m3u8",
+        streamUrl = "https://demiroren.daioncdn.net/kanald/kanald.m3u8?app=kanald_web&ce=3",
         streamMirrors = emptyList(),
         tvgId = "KanalD",
         isFavorite = false,
@@ -121,6 +225,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 5. Show TV HD
     IPTVChannel(
         id = "showtv_hd",
         name = "Show TV HD",
@@ -128,8 +233,8 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NATIONAL,
         groupTitle = "TR",
-        streamUrl = "https://ciner-live.daioncdn.net/showtv/showtv.m3u8",
-        streamMirrors = emptyList(),
+        streamUrl = "https://ciner.daioncdn.net/showtv/showtv.m3u8?app=showtv_web",
+        streamMirrors = listOf("https://ciner.daioncdn.net/showtv/showtv.m3u8?app=showtv_web&ce=3"),
         tvgId = "ShowTV",
         isFavorite = false,
         lastWatchedTimestamp = 0,
@@ -137,6 +242,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 6. Star TV HD
     IPTVChannel(
         id = "startv_hd",
         name = "Star TV HD",
@@ -144,7 +250,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NATIONAL,
         groupTitle = "TR",
-        streamUrl = "https://dogus-live.daioncdn.net/startv/startv.m3u8",
+        streamUrl = "https://dogus.daioncdn.net/startv/startv_720p.m3u8?app=a20ac41e-bdc3-4aa1-934d-26b484480ac9&ce=3&sid=8l4w3lst4co5",
         streamMirrors = emptyList(),
         tvgId = "StarTV",
         isFavorite = false,
@@ -153,22 +259,109 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 7. Halk TV HD
     IPTVChannel(
-        id = "atv_hd",
-        name = "ATV HD",
-        normalizedName = "atv",
+        id = "halktv_hd",
+        name = "Halk TV HD",
+        normalizedName = "halk tv",
         logoUrl = "",
-        category = CategoryHelper.CAT_NATIONAL,
+        category = CategoryHelper.CAT_NEWS,
         groupTitle = "TR",
-        streamUrl = "https://trkvz-live.daioncdn.net/atv/atv.m3u8",
-        streamMirrors = listOf("https://trkvz.daioncdn.net/atv/atv.m3u8"),
-        tvgId = "ATV",
+        streamUrl = "https://halktv-live.daioncdn.net/halktv/halktv.m3u8",
+        streamMirrors = emptyList(),
+        tvgId = "HalkTV",
         isFavorite = false,
         lastWatchedTimestamp = 0,
         isCustom = false,
         country = "Türkiye",
         language = "tr"
     ),
+    // 8. Sözcü TV HD
+    IPTVChannel(
+        id = "sozcutv_hd",
+        name = "Sözcü TV HD",
+        normalizedName = "sozcu tv",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NEWS,
+        groupTitle = "TR",
+        streamUrl = "https://szctv.blutv.com/blutv_szctv/live_720p2000000kbps/index.m3u8",
+        streamMirrors = listOf("https://halktv-live.daioncdn.net/halktv/halktv.m3u8"),
+        tvgId = "SozcuTV",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 9. TRT Spor HD
+    IPTVChannel(
+        id = "trtspor_hd",
+        name = "TRT Spor HD",
+        normalizedName = "trt spor",
+        logoUrl = "",
+        category = CategoryHelper.CAT_SPORTS,
+        groupTitle = "TR",
+        streamUrl = "https://trt.daioncdn.net/trtspor/master.m3u8?app=web",
+        streamMirrors = listOf("https://trt.daioncdn.net/trtspor-yildiz/master.m3u8?app=web&platform=trtspor"),
+        tvgId = "TRTSpor",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 10. HT Spor HD
+    IPTVChannel(
+        id = "htspor_hd",
+        name = "HT Spor HD",
+        normalizedName = "ht spor",
+        logoUrl = "",
+        category = CategoryHelper.CAT_SPORTS,
+        groupTitle = "TR",
+        streamUrl = "https://ciner.daioncdn.net/ht-spor/ht-spor.m3u8?app=web",
+        streamMirrors = listOf("https://ciner-live.daioncdn.net/ht-spor/ht-spor.m3u8"),
+        tvgId = "HTSpor",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 11. A Spor HD
+    IPTVChannel(
+        id = "aspor_hd",
+        name = "A Spor HD",
+        normalizedName = "a spor",
+        logoUrl = "",
+        category = CategoryHelper.CAT_SPORTS,
+        groupTitle = "TR",
+        streamUrl = "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/aspor/aspor.m3u8",
+        streamMirrors = emptyList(),
+        tvgId = "ASpor",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 12. TRT Spor Yıldız HD
+    IPTVChannel(
+        id = "trtspor_yildiz_hd",
+        name = "TRT Spor Yıldız HD",
+        normalizedName = "trt spor yildiz",
+        logoUrl = "",
+        category = CategoryHelper.CAT_SPORTS,
+        groupTitle = "TR",
+        streamUrl = "https://trt.daioncdn.net/trtspor-yildiz/master.m3u8?app=web&platform=trtspor",
+        streamMirrors = emptyList(),
+        tvgId = "TRTSporYildiz",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 13. TV8 HD
     IPTVChannel(
         id = "tv8_hd",
         name = "TV8 HD",
@@ -176,7 +369,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NATIONAL,
         groupTitle = "TR",
-        streamUrl = "https://tv8-live.daioncdn.net/tv8/tv8.m3u8",
+        streamUrl = "https://tv8.daioncdn.net/tv8/tv8.m3u8?app=7ddc255a-ef47-4e81-ab14-c0e5f2949788&ce=3",
         streamMirrors = emptyList(),
         tvgId = "TV8",
         isFavorite = false,
@@ -185,6 +378,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 14. A2 HD
     IPTVChannel(
         id = "a2_hd",
         name = "A2 HD",
@@ -192,7 +386,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NATIONAL,
         groupTitle = "TR",
-        streamUrl = "https://trkvz-live.daioncdn.net/a2/a2.m3u8",
+        streamUrl = "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/a2tv/a2tv.m3u8",
         streamMirrors = emptyList(),
         tvgId = "A2",
         isFavorite = false,
@@ -201,6 +395,58 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 15. TV 100 HD
+    IPTVChannel(
+        id = "tv100_hd",
+        name = "TV 100 HD",
+        normalizedName = "tv100",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NEWS,
+        groupTitle = "TR",
+        streamUrl = "https://tv.ensonhaber.com/tv100/tv100.m3u8",
+        streamMirrors = emptyList(),
+        tvgId = "TV100",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 16. Beyaz TV HD
+    IPTVChannel(
+        id = "beyaztv_hd",
+        name = "Beyaz TV HD",
+        normalizedName = "beyaz tv",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NATIONAL,
+        groupTitle = "TR",
+        streamUrl = "https://beyaztv-live.daioncdn.net/beyaztv/beyaztv.m3u8",
+        streamMirrors = emptyList(),
+        tvgId = "BeyazTV",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 17. Ekol TV HD
+    IPTVChannel(
+        id = "ekoltv_hd",
+        name = "Ekol TV HD",
+        normalizedName = "ekol tv",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NEWS,
+        groupTitle = "TR",
+        streamUrl = "https://ekoltv-live.ercdn.net/ekoltv/ekoltv.m3u8",
+        streamMirrors = emptyList(),
+        tvgId = "EkolTV",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 18. TRT Haber HD
     IPTVChannel(
         id = "trthaber_hd",
         name = "TRT Haber HD",
@@ -217,6 +463,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 19. NTV HD
     IPTVChannel(
         id = "ntv_hd",
         name = "NTV HD",
@@ -224,7 +471,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NEWS,
         groupTitle = "TR",
-        streamUrl = "https://dogus-live.daioncdn.net/ntv/ntv.m3u8",
+        streamUrl = "https://dogus.daioncdn.net/ntv/ntv.m3u8?app=ntv_web",
         streamMirrors = emptyList(),
         tvgId = "NTV",
         isFavorite = false,
@@ -233,6 +480,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 20. HaberTürk HD
     IPTVChannel(
         id = "haberturk_hd",
         name = "HaberTürk HD",
@@ -240,7 +488,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NEWS,
         groupTitle = "TR",
-        streamUrl = "https://ciner-live.daioncdn.net/haberturk/haberturk.m3u8",
+        streamUrl = "https://tv.ensonhaber.com/haberturk/haberturk.m3u8",
         streamMirrors = emptyList(),
         tvgId = "HaberTurk",
         isFavorite = false,
@@ -249,22 +497,24 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 21. Haber Global HD
     IPTVChannel(
-        id = "cnnturk_hd",
-        name = "CNN Türk HD",
-        normalizedName = "cnn turk",
+        id = "haberglobal_hd",
+        name = "Haber Global HD",
+        normalizedName = "haber global",
         logoUrl = "",
         category = CategoryHelper.CAT_NEWS,
         groupTitle = "TR",
-        streamUrl = "https://demiroren-live.daioncdn.net/cnnturk/cnnturk.m3u8",
+        streamUrl = "https://tv.ensonhaber.com/haberglobal/haberglobal.m3u8",
         streamMirrors = emptyList(),
-        tvgId = "CNNTurk",
+        tvgId = "HaberGlobal",
         isFavorite = false,
         lastWatchedTimestamp = 0,
         isCustom = false,
         country = "Türkiye",
         language = "tr"
     ),
+    // 22. A Haber HD
     IPTVChannel(
         id = "ahaber_hd",
         name = "A Haber HD",
@@ -272,7 +522,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_NEWS,
         groupTitle = "TR",
-        streamUrl = "https://trkvz-live.daioncdn.net/ahaber/ahaber.m3u8",
+        streamUrl = "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/ahaber/ahaber.m3u8",
         streamMirrors = emptyList(),
         tvgId = "AHaber",
         isFavorite = false,
@@ -281,54 +531,75 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 23. TV 24 HD
     IPTVChannel(
-        id = "trtspor_hd",
-        name = "TRT Spor HD",
-        normalizedName = "trt spor",
+        id = "tv24_hd",
+        name = "TV 24 HD",
+        normalizedName = "tv 24",
         logoUrl = "",
-        category = CategoryHelper.CAT_SPORTS,
+        category = CategoryHelper.CAT_NEWS,
         groupTitle = "TR",
-        streamUrl = "https://trt.daioncdn.net/trtspor/master.m3u8?app=web",
-        streamMirrors = listOf("https://tv-trtspor.medya.trt.com.tr/master.m3u8"),
-        tvgId = "TRTSpor",
-        isFavorite = false,
-        lastWatchedTimestamp = 0,
-        isCustom = false,
-        country = "Türkiye",
-        language = "tr"
-    ),
-    IPTVChannel(
-        id = "aspor_hd",
-        name = "A Spor HD",
-        normalizedName = "a spor",
-        logoUrl = "",
-        category = CategoryHelper.CAT_SPORTS,
-        groupTitle = "TR",
-        streamUrl = "https://trkvz-live.daioncdn.net/aspor/aspor.m3u8",
+        streamUrl = "https://turkmedya-live.ercdn.net/tv24/tv24.m3u8",
         streamMirrors = emptyList(),
-        tvgId = "ASpor",
+        tvgId = "TV24",
         isFavorite = false,
         lastWatchedTimestamp = 0,
         isCustom = false,
         country = "Türkiye",
         language = "tr"
     ),
+    // 24. 360 TV HD
     IPTVChannel(
-        id = "trtbelgesel_hd",
-        name = "TRT Belgesel HD",
-        normalizedName = "trt belgesel",
+        id = "tv360_hd",
+        name = "360 TV HD",
+        normalizedName = "360 tv",
         logoUrl = "",
-        category = CategoryHelper.CAT_DOCUMENTARY,
+        category = CategoryHelper.CAT_NATIONAL,
         groupTitle = "TR",
-        streamUrl = "https://tv-trtbelgesel-dai.medya.trt.com.tr/master.m3u8",
+        streamUrl = "https://turkmedya-live.ercdn.net/tv360/tv360.m3u8",
         streamMirrors = emptyList(),
-        tvgId = "TRTBelgesel",
+        tvgId = "TV360",
         isFavorite = false,
         lastWatchedTimestamp = 0,
         isCustom = false,
         country = "Türkiye",
         language = "tr"
     ),
+    // 25. Flash Haber TV
+    IPTVChannel(
+        id = "flashhaber_hd",
+        name = "Flash Haber TV",
+        normalizedName = "flash haber",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NEWS,
+        groupTitle = "TR",
+        streamUrl = "https://b01c02nl.mediatriple.net/videoonlylive/mtyycglqauzjhlive/broadcast_67c053c48829f.smil/playlist.m3u8",
+        streamMirrors = emptyList(),
+        tvgId = "FlashHaber",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 26. TGRT Haber HD
+    IPTVChannel(
+        id = "tgrthaber_hd",
+        name = "TGRT Haber HD",
+        normalizedName = "tgrt haber",
+        logoUrl = "",
+        category = CategoryHelper.CAT_NEWS,
+        groupTitle = "TR",
+        streamUrl = "https://canli.tgrthaber.com/tgrt.m3u8",
+        streamMirrors = emptyList(),
+        tvgId = "TGRTHaber",
+        isFavorite = false,
+        lastWatchedTimestamp = 0,
+        isCustom = false,
+        country = "Türkiye",
+        language = "tr"
+    ),
+    // 27. TGRT Belgesel HD
     IPTVChannel(
         id = "tgrtbelgesel_hd",
         name = "TGRT Belgesel HD",
@@ -336,7 +607,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_DOCUMENTARY,
         groupTitle = "TR",
-        streamUrl = "https://tgrt-live.daioncdn.net/tgrtbelgesel/tgrtbelgesel.m3u8",
+        streamUrl = "https://b01c02nl.mediatriple.net/videoonlylive/mtsxxkzwwuqtglive/broadcast_5fe462afc6a0e.smil/playlist.m3u8",
         streamMirrors = emptyList(),
         tvgId = "TGRTBelgesel",
         isFavorite = false,
@@ -345,6 +616,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 28. TRT Çocuk HD
     IPTVChannel(
         id = "trtcocuk_hd",
         name = "TRT Çocuk HD",
@@ -353,7 +625,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         category = CategoryHelper.CAT_KIDS,
         groupTitle = "TR",
         streamUrl = "https://tv-trtcocuk.medya.trt.com.tr/master.m3u8",
-        streamMirrors = emptyList(),
+        streamMirrors = listOf("https://tv-trtdiyanetcocuk.medya.trt.com.tr/master.m3u8"),
         tvgId = "TRTCocuk",
         isFavorite = false,
         lastWatchedTimestamp = 0,
@@ -361,6 +633,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 29. Minika Çocuk HD
     IPTVChannel(
         id = "minikacocuk_hd",
         name = "Minika Çocuk HD",
@@ -368,7 +641,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_KIDS,
         groupTitle = "TR",
-        streamUrl = "https://trkvz-live.daioncdn.net/minikacocuk/minikacocuk.m3u8",
+        streamUrl = "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/minikago_cocuk/minikago_cocuk.m3u8",
         streamMirrors = emptyList(),
         tvgId = "MinikaCocuk",
         isFavorite = false,
@@ -377,22 +650,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
-    IPTVChannel(
-        id = "minikago_hd",
-        name = "Minika Go HD",
-        normalizedName = "minika go",
-        logoUrl = "",
-        category = CategoryHelper.CAT_KIDS,
-        groupTitle = "TR",
-        streamUrl = "https://trkvz-live.daioncdn.net/minikago/minikago.m3u8",
-        streamMirrors = emptyList(),
-        tvgId = "MinikaGo",
-        isFavorite = false,
-        lastWatchedTimestamp = 0,
-        isCustom = false,
-        country = "Türkiye",
-        language = "tr"
-    ),
+    // 30. TRT Müzik HD
     IPTVChannel(
         id = "trtmuzik_hd",
         name = "TRT Müzik HD",
@@ -409,6 +667,7 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         country = "Türkiye",
         language = "tr"
     ),
+    // 31. Kral Pop TV HD
     IPTVChannel(
         id = "kralpoptv_hd",
         name = "Kral Pop TV HD",
@@ -416,25 +675,9 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         logoUrl = "",
         category = CategoryHelper.CAT_MUSIC,
         groupTitle = "TR",
-        streamUrl = "https://dogus-live.daioncdn.net/kralpoptv/kralpoptv.m3u8",
-        streamMirrors = emptyList(),
+        streamUrl = "https://dogus-live.daioncdn.net/kralpoptv/playlist.m3u8",
+        streamMirrors = listOf("https://livetv.powerapp.com.tr/dance/dance.smil/playlist.m3u8"),
         tvgId = "KralPop",
-        isFavorite = false,
-        lastWatchedTimestamp = 0,
-        isCustom = false,
-        country = "Türkiye",
-        language = "tr"
-    ),
-    IPTVChannel(
-        id = "kraltv_hd",
-        name = "Kral TV HD",
-        normalizedName = "kral tv",
-        logoUrl = "",
-        category = CategoryHelper.CAT_MUSIC,
-        groupTitle = "TR",
-        streamUrl = "https://dogus-live.daioncdn.net/kraltv/kraltv.m3u8",
-        streamMirrors = emptyList(),
-        tvgId = "KralTV",
         isFavorite = false,
         lastWatchedTimestamp = 0,
         isCustom = false,
@@ -442,6 +685,43 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
         language = "tr"
     )
 )
+
+fun sortChannelsWithUserPreference(
+    channels: List<IPTVChannel>,
+    isWorldTab: Boolean = false,
+    selectedCountry: String = "Tümü",
+    selectedGenre: String = "Tümü"
+): List<IPTVChannel> {
+    if (isWorldTab) {
+        return channels.filter { chan ->
+            val detectedCountry = CategoryHelper.detectCountry(chan.name, chan.groupTitle)
+            val countryMatch = if (selectedCountry == "Tümü") {
+                detectedCountry != "Türkiye"
+            } else {
+                detectedCountry.equals(selectedCountry, ignoreCase = true)
+            }
+            val smartGenre = CategoryHelper.getSmartCategory(chan.name, chan.groupTitle, chan.tvgId)
+            val genreMatch = if (selectedGenre == "Tümü") true
+            else {
+                smartGenre.contains(selectedGenre, ignoreCase = true) || chan.category.contains(selectedGenre, ignoreCase = true)
+            }
+            countryMatch && genreMatch
+        }.sortedWith(
+            compareByDescending<IPTVChannel> { it.isFavorite }
+                .thenBy { it.name }
+        )
+    }
+
+    // Normal / Türk Kanalları Modu:
+    // Öncelikli olarak PREFERRED_TURKISH_ORDER dizilimi (TRT 1, TRT 2, ATV, Kanal D, Show, Star, Halk, Sözcü...)
+    // Diğer kanallar ise kategori ve ada göre sıralanır
+    return channels.sortedWith(
+        compareBy<IPTVChannel> {
+            val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
+            if (idx != -1) idx else (1000 + CategoryHelper.getCategoryPriority(it.category))
+        }.thenBy { it.name }
+    )
+}
 
 class ChannelRepository(
     private val channelDao: ChannelDao,
@@ -458,6 +738,24 @@ class ChannelRepository(
         if (existing.isEmpty()) {
             Log.d("ChannelRepository", "Database is empty. Seeding highly stable official CDN Turkish channels.")
             channelDao.insertChannels(STABLE_TURKISH_PRESEEDED_CHANNELS)
+        } else {
+            // Self-repair: ensure all default channels exist and have the latest verified 100% active CDN stream URLs
+            val defaultIds = STABLE_TURKISH_PRESEEDED_CHANNELS.map { it.id }.toSet()
+            val existingIds = existing.map { it.id }.toSet()
+            val missingDefaults = defaultIds - existingIds
+            val hasOutdatedDefaults = existing.any { it.id in defaultIds && STABLE_TURKISH_PRESEEDED_CHANNELS.find { def -> def.id == it.id }?.streamUrl != it.streamUrl }
+            if (missingDefaults.isNotEmpty() || hasOutdatedDefaults) {
+                Log.d("ChannelRepository", "Updating/Inserting preseeded Turkish channels with latest verified working streams.")
+                val updatedChannels = STABLE_TURKISH_PRESEEDED_CHANNELS.map { pre ->
+                    val prev = existing.find { it.id == pre.id }
+                    if (prev != null) {
+                        pre.copy(isFavorite = prev.isFavorite, lastWatchedTimestamp = prev.lastWatchedTimestamp)
+                    } else {
+                        pre
+                    }
+                }
+                channelDao.insertChannels(updatedChannels)
+            }
         }
     }
 

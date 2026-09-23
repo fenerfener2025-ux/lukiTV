@@ -9,9 +9,11 @@ class VlcEngine : PlayerEngine {
     private var cachedListener: PlayerEngine.EngineListener? = null
 
     override fun initialize(context: Context) {
-        delegate = Media3Engine().apply {
-            initialize(context)
-            cachedListener?.let { applyListener(it) }
+        if (delegate == null) {
+            delegate = Media3Engine().apply {
+                initialize(context)
+                cachedListener?.let { applyListener(it) }
+            }
         }
     }
 

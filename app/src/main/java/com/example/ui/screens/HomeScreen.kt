@@ -37,6 +37,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -51,7 +54,10 @@ import androidx.compose.ui.res.painterResource
 import com.example.R
 import com.example.data.repository.OPEN_SOURCE_PRESETS
 import com.example.data.repository.PresetSource
+import com.example.data.repository.PREFERRED_TURKISH_ORDER
+import com.example.data.repository.sortChannelsWithUserPreference
 import com.example.domain.model.IPTVChannel
+import com.example.player.PlayerCacheManager
 import com.example.ui.components.SilentPreviewPlayer
 import com.example.domain.util.CategoryHelper
 import com.example.ui.theme.*
@@ -75,6 +81,7 @@ fun HomeScreen(
     val syncingState by viewModel.syncingState.collectAsState()
 
     val configuration = LocalConfiguration.current
+    val appContext = LocalContext.current.applicationContext
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     val isTvMode = configuration.screenWidthDp >= 650 && !isPortrait
 
@@ -255,15 +262,22 @@ fun MobileHomeScreen(
             }
         }
 
-        // Sort so that favorites are grouped at the top of the list, followed by category priority and then name
-        if (activeTab == 1) {
-            filtered.sortedBy { it.name }
-        } else {
-            filtered.sortedWith(
+        // Sort so that favorites are grouped at the top of the list, followed by user preferred order and category priority
+        when (activeTab) {
+            1 -> filtered.sortedBy { it.name }
+            2 -> filtered.sortedWith(
                 compareByDescending<IPTVChannel> { it.isFavorite }
-                    .thenBy { categoryPriority(it.category) }
                     .thenBy { it.name }
             )
+            else -> {
+                // Live TV / Turkish channels: User requested priority order (TRT 1, TRT 2, ATV, Kanal D, Show, Star, Halk, Sözcü, TRT Spor, HT Spor, A Spor...)
+                filtered.sortedWith(
+                    compareBy<IPTVChannel> {
+                        val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
+                        if (idx != -1) idx else (1000 + CategoryHelper.getCategoryPriority(it.category))
+                    }.thenBy { it.name }
+                )
+            }
         }
     }
 
@@ -274,6 +288,16 @@ fun MobileHomeScreen(
     LaunchedEffect(filteredChannels) {
         if (!filteredChannels.contains(focusedChannel)) {
             focusedChannel = filteredChannels.firstOrNull()
+        }
+    }
+
+    // Proactively pre-buffer the focused channel to ensure instantaneous playback without stutter
+    val appContext = LocalContext.current.applicationContext
+    LaunchedEffect(focusedChannel) {
+        focusedChannel?.let { chan ->
+            if (chan.streamUrl.isNotBlank()) {
+                PlayerCacheManager.prebufferStream(appContext, chan.streamUrl)
+            }
         }
     }
 
@@ -941,101 +965,458 @@ fun MobileChannelRow(
     val themeConfig = LocalThemeConfig.current
     val palette = themeConfig.palette
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) palette.secondary.copy(alpha = 0.15f) else palette.surface.copy(alpha = 0.65f)
-        ),
-        border = BorderStroke(
-            1.5.dp,
-            if (isSelected) palette.secondary else Color.White.copy(alpha = 0.08f)
-        ),
-        modifier = modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onDoubleClick = onDoubleClick
-            )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Left Logo Box
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF070E24)),
-                contentAlignment = Alignment.Center
+    when (palette) {
+        AppColorPalette.TIVIMATE -> {
+            Card(
+                shape = RoundedCornerShape(4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) Color(0xFF141414) else Color(0xFF000000)
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (isSelected) palette.secondary else Color.White.copy(alpha = 0.05f)
+                ),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onDoubleClick = onDoubleClick
+                    )
             ) {
-                ChannelLogoImage(
-                    logoUrl = channel.logoUrl,
-                    category = channel.category,
-                    channelName = channel.name,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(4.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Center Info Column
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = channel.name,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    ),
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
+                Column {
+                    Row(
                         modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(palette.liveBadge)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = channel.category,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = palette.secondary.copy(alpha = 0.85f),
-                        fontSize = 11.sp
-                    )
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color(0xFF0F0F0F)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ChannelLogoImage(
+                                logoUrl = channel.logoUrl,
+                                category = channel.category,
+                                channelName = channel.name,
+                                modifier = Modifier.fillMaxSize().padding(3.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = channel.name,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                                color = if (isSelected) palette.secondary else Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Canlı Yayın • ${channel.category}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.4f),
+                                fontSize = 10.sp
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = palette.secondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        IconButton(onClick = onFavoriteClick, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = null,
+                                tint = if (channel.isFavorite) Color(0xFFFF3B5C) else Color.White.copy(alpha = 0.3f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    if (isSelected) {
+                        LinearProgressIndicator(
+                            progress = { 0.35f },
+                            modifier = Modifier.fillMaxWidth().height(2.5.dp),
+                            color = palette.secondary,
+                            trackColor = Color.Transparent
+                        )
+                    }
                 }
             }
-
-            // Quick Play icon indicator when selected
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "Oynatılıyor",
-                    tint = palette.secondary,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .padding(end = 4.dp)
-                )
-            }
-
-            // Right: Favorite toggle button
-            IconButton(
-                onClick = onFavoriteClick,
-                modifier = Modifier.size(36.dp)
+        }
+        AppColorPalette.NETFLIX -> {
+            Card(
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) Color(0xFF222222) else Color(0xFF141414)
+                ),
+                border = BorderStroke(
+                    1.5.dp,
+                    if (isSelected) palette.secondary else Color.Transparent
+                ),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onDoubleClick = onDoubleClick
+                    )
             ) {
-                Icon(
-                    imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = "Favori",
-                    tint = if (channel.isFavorite) palette.liveBadge else Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier.size(18.dp)
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp, 32.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "N",
+                            color = palette.secondary,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 18.sp,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = palette.secondary,
+                                shape = RoundedCornerShape(2.dp),
+                                modifier = Modifier.padding(end = 6.dp)
+                            ) {
+                                Text(
+                                    text = "CANLI",
+                                    color = Color.White,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                            Text(
+                                text = channel.name,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = channel.category.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    IconButton(onClick = onFavoriteClick, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = null,
+                            tint = if (channel.isFavorite) palette.secondary else Color.White.copy(alpha = 0.3f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+        AppColorPalette.APPLE_TV -> {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f)
+                ),
+                border = BorderStroke(
+                    1.5.dp,
+                    if (isSelected) Color.White.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.1f)
+                ),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onDoubleClick = onDoubleClick
+                    )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ChannelLogoImage(
+                            logoUrl = channel.logoUrl,
+                            category = channel.category,
+                            channelName = channel.name,
+                            modifier = Modifier.fillMaxSize().padding(6.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = channel.category,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.secondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    IconButton(onClick = onFavoriteClick, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = null,
+                            tint = if (channel.isFavorite) Color.White else Color.White.copy(alpha = 0.3f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+        AppColorPalette.PLEX -> {
+            Card(
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) Color(0xFF333333) else Color(0xFF1E1E1E)
+                ),
+                border = BorderStroke(
+                    1.5.dp,
+                    if (isSelected) palette.secondary else Color.Transparent
+                ),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onDoubleClick = onDoubleClick
+                    )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ChannelLogoImage(
+                            logoUrl = channel.logoUrl,
+                            category = channel.category,
+                            channelName = channel.name,
+                            modifier = Modifier.fillMaxSize().padding(4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = channel.category,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.secondary,
+                            fontSize = 10.sp
+                        )
+                    }
+                    IconButton(onClick = onFavoriteClick, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = null,
+                            tint = if (channel.isFavorite) palette.secondary else Color.White.copy(alpha = 0.3f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+        AppColorPalette.DIGITURK -> {
+            val channelIndex = 120 + (channel.id.hashCode() % 100).coerceAtLeast(1)
+            Card(
+                shape = RoundedCornerShape(0.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) Color(0xFF220000) else Color(0xFF0C0C0C)
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (isSelected) palette.secondary else Color.White.copy(alpha = 0.05f)
+                ),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onDoubleClick = onDoubleClick
+                    )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp, 28.dp)
+                            .background(if (isSelected) palette.secondary else Color(0xFF222222)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "%03d".format(channelIndex),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = channel.name.uppercase(),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = if (isSelected) palette.secondary else Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = channel.category,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isSelected) Color.White.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.4f),
+                            fontSize = 10.sp
+                        )
+                    }
+                    IconButton(onClick = onFavoriteClick, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = null,
+                            tint = if (channel.isFavorite) palette.secondary else Color.White.copy(alpha = 0.3f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+        else -> {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) palette.secondary.copy(alpha = 0.15f) else palette.surface.copy(alpha = 0.65f)
+                ),
+                border = BorderStroke(
+                    1.5.dp,
+                    if (isSelected) palette.secondary else Color.White.copy(alpha = 0.08f)
+                ),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onDoubleClick = onDoubleClick
+                    )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF070E24)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ChannelLogoImage(
+                            logoUrl = channel.logoUrl,
+                            category = channel.category,
+                            channelName = channel.name,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.liveBadge)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = channel.category,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.secondary.copy(alpha = 0.85f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Oynatılıyor",
+                            tint = palette.secondary,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(end = 4.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onFavoriteClick,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Favori",
+                            tint = if (channel.isFavorite) palette.liveBadge else Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1336,6 +1717,7 @@ fun TvHomeScreen(
             onSelectIndex = {
                 selectedRailIndex = it
                 tvSearchQuery = "" // Clear search when switching tabs
+                viewModel.setWorldTabActive(it == 1)
             },
             onSearchClick = onNavigateToSearch,
             onAddPlaylistClick = onNavigateToAddPlaylist,
@@ -1355,39 +1737,11 @@ fun TvHomeScreen(
                     onQuickLoadPreset = { preset -> viewModel.loadOpenSourcePreset(preset) }
                 )
             } else {
-                // TV Search Bar always visible on channel list screen
-                OutlinedTextField(
-                    value = tvSearchQuery,
-                    onValueChange = { tvSearchQuery = it },
-                    placeholder = { Text("Kanal listesinde kanal adı veya kategori ara...", color = Color.White.copy(alpha = 0.5f)) },
-                    leadingIcon = {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = AuroraCyan)
-                    },
-                    trailingIcon = {
-                        if (tvSearchQuery.isNotEmpty()) {
-                            IconButton(onClick = { tvSearchQuery = "" }) {
-                                Icon(imageVector = Icons.Default.Clear, contentDescription = "Temizle", tint = Color.White.copy(alpha = 0.5f))
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = AuroraCyan,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
-                        focusedContainerColor = SurfaceBlue,
-                        unfocusedContainerColor = Color(0xFF0C1636).copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .testTag("tv_home_search_bar")
-                )
-
-                // Hero Spotlight Stage
-                TvHeroStage(
-                    channel = focusedChannel,
+                // Sleek Compact Top Bar (Search + Focused Channel Status Pill)
+                TvCompactTopBar(
+                    searchQuery = tvSearchQuery,
+                    onSearchQueryChange = { tvSearchQuery = it },
+                    focusedChannel = focusedChannel,
                     onPlayClick = {
                         focusedChannel?.let {
                             viewModel.selectChannel(it)
@@ -1399,7 +1753,7 @@ fun TvHomeScreen(
                     }
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 // Categorized Shelves or specific view based on Rail selection / Search Query
                 if (tvSearchQuery.isNotEmpty()) {
@@ -1420,7 +1774,7 @@ fun TvHomeScreen(
                 } else {
                     when (selectedRailIndex) {
                         0 -> {
-                            // "Canlı TV" - All Shelves (Favorites automatically placed at the top shelf!)
+                            // 0: "Türk Kanalları" - Prioritized Shelves (Favorites, En Çok İzlenenler, Ulusal, Spor, Haber...)
                             TvShelvesView(
                                 allChannels = processedChannels,
                                 favoriteChannels = processedChannels.filter { it.isFavorite },
@@ -1433,7 +1787,99 @@ fun TvHomeScreen(
                             )
                         }
                         1 -> {
-                            // "Favoriler"
+                            // 1: "Dünya Kanalları" - Filterable by Country (Azerbaycan, Almanya, İngiltere, ABD...)
+                            TvWorldCategoryGrid(
+                                viewModel = viewModel,
+                                allChannels = processedChannels,
+                                onChannelFocused = { focusedChannel = it },
+                                onChannelClick = { ch ->
+                                    viewModel.selectChannel(ch)
+                                    onNavigateToPlayer()
+                                }
+                            )
+                        }
+                        2 -> {
+                            // 2: "Spor"
+                            val sportsList = remember(processedChannels) {
+                                processedChannels.filter {
+                                    it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) ||
+                                    it.name.contains("spor", ignoreCase = true) ||
+                                    it.name.contains("sport", ignoreCase = true) ||
+                                    it.name.contains("bein", ignoreCase = true)
+                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                            }
+                            TvCategoryGrid(
+                                title = "⚽ Spor Kanalları",
+                                channels = sportsList,
+                                onChannelFocused = { focusedChannel = it },
+                                onChannelClick = { ch ->
+                                    viewModel.selectChannel(ch)
+                                    onNavigateToPlayer()
+                                }
+                            )
+                        }
+                        3 -> {
+                            // 3: "Haber"
+                            val newsList = remember(processedChannels) {
+                                processedChannels.filter {
+                                    it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) ||
+                                    it.name.contains("haber", ignoreCase = true) ||
+                                    it.name.contains("news", ignoreCase = true)
+                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                            }
+                            TvCategoryGrid(
+                                title = "📰 Haber & Gündem",
+                                channels = newsList,
+                                onChannelFocused = { focusedChannel = it },
+                                onChannelClick = { ch ->
+                                    viewModel.selectChannel(ch)
+                                    onNavigateToPlayer()
+                                }
+                            )
+                        }
+                        4 -> {
+                            // 4: "Sinema & Dizi"
+                            val movieList = remember(processedChannels) {
+                                processedChannels.filter {
+                                    it.category.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) ||
+                                    it.name.contains("sinema", ignoreCase = true) ||
+                                    it.name.contains("film", ignoreCase = true) ||
+                                    it.name.contains("dizi", ignoreCase = true)
+                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                            }
+                            TvCategoryGrid(
+                                title = "🎬 Film & Sinema",
+                                channels = movieList,
+                                onChannelFocused = { focusedChannel = it },
+                                onChannelClick = { ch ->
+                                    viewModel.selectChannel(ch)
+                                    onNavigateToPlayer()
+                                }
+                            )
+                        }
+                        5 -> {
+                            // 5: "Belgesel & Doğa"
+                            val docList = remember(processedChannels) {
+                                processedChannels.filter {
+                                    it.category.equals(CategoryHelper.CAT_DOCUMENTARY, ignoreCase = true) ||
+                                    it.name.contains("belgesel", ignoreCase = true) ||
+                                    it.name.contains("docu", ignoreCase = true) ||
+                                    it.name.contains("discovery", ignoreCase = true) ||
+                                    it.name.contains("geographic", ignoreCase = true)
+                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                            }
+                            TvCategoryGrid(
+                                title = "🌿 Belgesel & Doğa",
+                                channels = docList,
+                                onChannelFocused = { focusedChannel = it },
+                                onChannelClick = { ch ->
+                                    viewModel.selectChannel(ch)
+                                    onNavigateToPlayer()
+                                }
+                            )
+                        }
+                        6 -> {
+                            // 6: "Favoriler"
                             TvCategoryGrid(
                                 title = "★ Favori Kanallarım",
                                 channels = processedChannels.filter { it.isFavorite },
@@ -1444,12 +1890,12 @@ fun TvHomeScreen(
                                 }
                             )
                         }
-                        2 -> {
-                            // "Ulusal"
+                        7 -> {
+                            // 7: "Son İzlenenler / Geçmiş"
+                            val recentChannels by viewModel.recentChannels.collectAsState()
                             TvCategoryGrid(
-                                title = "🇹🇷 Ulusal Kanallar",
-                                channels = processedChannels.filter { it.category.equals(CategoryHelper.CAT_NATIONAL, ignoreCase = true) }
-                                    .sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name }),
+                                title = "🕒 Son İzlenen Kanallar (${recentChannels.size})",
+                                channels = recentChannels,
                                 onChannelFocused = { focusedChannel = it },
                                 onChannelClick = { ch ->
                                     viewModel.selectChannel(ch)
@@ -1457,47 +1903,8 @@ fun TvHomeScreen(
                                 }
                             )
                         }
-                        3 -> {
-                            // "Spor"
-                            TvCategoryGrid(
-                                title = "⚽ Spor Kanalları",
-                                channels = processedChannels.filter { it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) }
-                                    .sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name }),
-                                onChannelFocused = { focusedChannel = it },
-                                onChannelClick = { ch ->
-                                    viewModel.selectChannel(ch)
-                                    onNavigateToPlayer()
-                                }
-                            )
-                        }
-                        4 -> {
-                            // "Haber"
-                            TvCategoryGrid(
-                                title = "📰 Haber & Gündem",
-                                channels = processedChannels.filter { it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) }
-                                    .sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name }),
-                                onChannelFocused = { focusedChannel = it },
-                                onChannelClick = { ch ->
-                                    viewModel.selectChannel(ch)
-                                    onNavigateToPlayer()
-                                }
-                            )
-                        }
-                        5 -> {
-                            // "Sinema"
-                            TvCategoryGrid(
-                                title = "🎬 Film & Sinema",
-                                channels = processedChannels.filter { it.category.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) }
-                                    .sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name }),
-                                onChannelFocused = { focusedChannel = it },
-                                onChannelClick = { ch ->
-                                    viewModel.selectChannel(ch)
-                                    onNavigateToPlayer()
-                                }
-                            )
-                        }
-                        6 -> {
-                            // "Ayarlar & Liste"
+                        8 -> {
+                            // 8: "Ayarlar & Liste"
                             TvSettingsView(
                                 viewModel = viewModel,
                                 onNavigateToAddPlaylist = onNavigateToAddPlaylist
@@ -1519,10 +1926,34 @@ fun TvNavRail(
     onSyncClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val themeConfig = LocalThemeConfig.current
+    val palette = themeConfig.palette
+
+    val railBg = when (palette) {
+        AppColorPalette.APPLE_TV -> Color.White.copy(alpha = 0.08f)
+        AppColorPalette.TIVIMATE -> Color(0xFF080808)
+        AppColorPalette.NETFLIX -> Color(0xFF000000)
+        AppColorPalette.PLEX -> Color(0xFF1E1E1E)
+        AppColorPalette.DIGITURK -> Color(0xFF0C0C0C)
+        else -> palette.surface.copy(alpha = 0.95f)
+    }
+
+    val railBorder = when (palette) {
+        AppColorPalette.APPLE_TV -> BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+        AppColorPalette.TIVIMATE -> BorderStroke(1.dp, Color.White.copy(alpha = 0.03f))
+        else -> BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    }
+
+    val railShape = when (palette) {
+        AppColorPalette.DIGITURK -> RoundedCornerShape(0.dp)
+        AppColorPalette.APPLE_TV -> RoundedCornerShape(24.dp)
+        else -> RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)
+    }
+
     Surface(
-        color = Color(0xFF070F26).copy(alpha = 0.95f),
-        shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+        color = railBg,
+        shape = railShape,
+        border = railBorder,
         modifier = modifier
             .width(84.dp)
             .fillMaxHeight()
@@ -1541,18 +1972,20 @@ fun TvNavRail(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .border(2.dp, Brush.linearGradient(listOf(AuroraCyan, AuroraPurple)), CircleShape)
+                    .border(2.dp, Brush.linearGradient(listOf(palette.secondary, palette.primary)), CircleShape)
             )
 
-            // Main TV Destinations
+            // Main TV Destinations (Turkish priority, World channels, genres, favorites, history, settings)
             val destinations = listOf(
-                Pair(0, Icons.Default.Tv),
-                Pair(1, Icons.Default.Favorite),
-                Pair(2, Icons.Default.Flag),
-                Pair(3, Icons.Default.SportsSoccer),
-                Pair(4, Icons.Default.Article),
-                Pair(5, Icons.Default.Movie),
-                Pair(6, Icons.Default.Settings)
+                Pair(0, Icons.Default.Tv),           // Türk Kanalları
+                Pair(1, Icons.Default.Public),       // Dünya / Yabancı Kanallar
+                Pair(2, Icons.Default.SportsSoccer), // Spor
+                Pair(3, Icons.Default.Article),      // Haber
+                Pair(4, Icons.Default.Movie),        // Sinema & Dizi
+                Pair(5, Icons.Default.Explore),      // Belgesel & Doğa
+                Pair(6, Icons.Default.Favorite),     // Favoriler
+                Pair(7, Icons.Default.History),      // Son İzlenenler / Geçmiş
+                Pair(8, Icons.Default.Settings)      // Ayarlar
             )
 
             Column(
@@ -1566,22 +1999,22 @@ fun TvNavRail(
                     Box(
                         modifier = Modifier
                             .size(52.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(if (palette == AppColorPalette.DIGITURK) RoundedCornerShape(0.dp) else RoundedCornerShape(14.dp))
                             .background(
                                 when {
-                                    isFocused -> AuroraCyan.copy(alpha = 0.3f)
-                                    isSelected -> AuroraPurple.copy(alpha = 0.4f)
+                                    isFocused -> palette.secondary.copy(alpha = 0.25f)
+                                    isSelected -> palette.secondary.copy(alpha = 0.15f)
                                     else -> Color.Transparent
                                 }
                             )
                             .border(
                                 1.5.dp,
                                 when {
-                                    isFocused -> AuroraCyan
-                                    isSelected -> AuroraPurple
+                                    isFocused -> palette.secondary
+                                    isSelected -> palette.secondary.copy(alpha = 0.5f)
                                     else -> Color.Transparent
                                 },
-                                RoundedCornerShape(14.dp)
+                                if (palette == AppColorPalette.DIGITURK) RoundedCornerShape(0.dp) else RoundedCornerShape(14.dp)
                             )
                             .dpadFocusable(
                                 onSelect = { onSelectIndex(index) },
@@ -1594,9 +2027,9 @@ fun TvNavRail(
                             imageVector = icon,
                             contentDescription = null,
                             tint = when {
-                                isFocused -> AuroraCyan
+                                isFocused -> palette.secondary
                                 isSelected -> Color.White
-                                else -> TextSecondary
+                                else -> Color.White.copy(alpha = 0.45f)
                             },
                             modifier = Modifier.size(24.dp)
                         )
@@ -1612,7 +2045,7 @@ fun TvNavRail(
                         .size(40.dp)
                         .dpadFocusable(onSelect = onAddPlaylistClick)
                 ) {
-                    Icon(imageVector = Icons.Default.PlaylistAdd, contentDescription = "Kaynak Ekle", tint = AuroraCyan)
+                    Icon(imageVector = Icons.Default.PlaylistAdd, contentDescription = "Kaynak Ekle", tint = palette.secondary)
                 }
                 IconButton(
                     onClick = onSearchClick,
@@ -1620,7 +2053,7 @@ fun TvNavRail(
                         .size(40.dp)
                         .dpadFocusable(onSelect = onSearchClick)
                 ) {
-                    Icon(imageVector = Icons.Default.Search, contentDescription = "Ara", tint = TextSecondary)
+                    Icon(imageVector = Icons.Default.Search, contentDescription = "Ara", tint = Color.White.copy(alpha = 0.6f))
                 }
                 IconButton(
                     onClick = onSyncClick,
@@ -1628,7 +2061,231 @@ fun TvNavRail(
                         .size(40.dp)
                         .dpadFocusable(onSelect = onSyncClick)
                 ) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Yenile", tint = TextSecondary)
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Yenile", tint = Color.White.copy(alpha = 0.6f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TvCompactTopBar(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    focusedChannel: IPTVChannel?,
+    onPlayClick: () -> Unit,
+    onFavoriteToggle: (IPTVChannel) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // 1. Sleek Compact Search Box
+        Surface(
+            color = Color(0xFF09122C).copy(alpha = 0.85f),
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+            modifier = Modifier
+                .width(260.dp)
+                .height(38.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = AuroraCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    cursorBrush = SolidColor(AuroraCyan),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("tv_home_search_bar"),
+                    decorationBox = { innerTextField ->
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = "Kanal veya kategori ara...",
+                                color = Color.White.copy(alpha = 0.45f),
+                                fontSize = 12.sp
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(
+                        onClick = { onSearchQueryChange("") },
+                        modifier = Modifier.size(22.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "Temizle",
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 2. Focused Channel Preview Bar (Compact 38dp height pill)
+        focusedChannel?.let { channel ->
+            Surface(
+                color = Color(0xFF0C1738).copy(alpha = 0.8f),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, AuroraCyan.copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+                    .clickable(onClick = onPlayClick)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        // Channel Logo Box
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(Color(0xFF060B18))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(5.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ChannelLogoImage(
+                                logoUrl = channel.logoUrl,
+                                category = channel.category,
+                                channelName = channel.name,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(2.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Channel Name (Refined font, not oversized)
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Live indicator dot
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(LiveRed)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "CANLI",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 8.sp
+                            ),
+                            color = LiveRed
+                        )
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Category Tag
+                        Surface(
+                            color = AuroraCyan.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = channel.category.ifBlank { "Genel" },
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 8.sp
+                                ),
+                                color = AuroraCyan,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    // Action: [OK] İzle & Favori
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val isFav = channel.isFavorite
+                        IconButton(
+                            onClick = { onFavoriteToggle(channel) },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Favori",
+                                tint = if (isFav) LiveRed else Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+
+                        Surface(
+                            color = AuroraCyan,
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .clickable(onClick = onPlayClick)
+                                .dpadFocusable(onSelect = onPlayClick)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = DeepSpaceBlue,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "[OK] İzle",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    ),
+                                    color = DeepSpaceBlue
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1642,146 +2299,15 @@ fun TvHeroStage(
     onFavoriteToggle: (IPTVChannel) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceBlue.copy(alpha = 0.75f)),
-        border = BorderStroke(1.5.dp, AuroraCyan.copy(alpha = 0.5f)),
+    // Compact TV Hero Bar (replaces the previously huge 150dp frame)
+    TvCompactTopBar(
+        searchQuery = "",
+        onSearchQueryChange = {},
+        focusedChannel = channel,
+        onPlayClick = onPlayClick,
+        onFavoriteToggle = onFavoriteToggle,
         modifier = modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .clickable(onClick = onPlayClick)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Big Channel Logo
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF0A1229))
-                    .border(1.dp, AuroraCyan.copy(alpha = 0.4f), RoundedCornerShape(18.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                ChannelLogoImage(
-                    logoUrl = channel?.logoUrl ?: "",
-                    category = channel?.category ?: "",
-                    channelName = channel?.name ?: "",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(10.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(24.dp))
-
-            // Channel Info
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(LiveRed)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "CANLI YAYIN • 1080P FULL HD",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        ),
-                        color = LiveRed
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Surface(
-                        color = AuroraPurple.copy(alpha = 0.3f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = channel?.category ?: "Genel",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = AuroraCyan,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = channel?.name ?: "PinpirikTV Canlı Yayın",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.5.sp
-                    ),
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "Kumanda [OK] tuşuna basarak tam ekranda kesintisiz izleyin.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-            }
-
-            // Big Watch Button and Favorite Heart Toggle Row
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = onPlayClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AuroraCyan,
-                        contentColor = Color(0xFF060E24)
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "İzle",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black)
-                    )
-                }
-
-                channel?.let { chan ->
-                    val isFav = chan.isFavorite
-                    IconButton(
-                        onClick = { onFavoriteToggle(chan) },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (isFav) LiveRed.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f))
-                            .border(1.dp, if (isFav) LiveRed else Color.White.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
-                    ) {
-                        Icon(
-                            imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Favori",
-                            tint = if (isFav) LiveRed else Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
+    )
 }
 
 @Composable
@@ -1793,9 +2319,40 @@ fun TvShelvesView(
     onChannelLongClick: (IPTVChannel) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val national = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_NATIONAL, ignoreCase = true) } }
-    val sports = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) } }
-    val news = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) } }
+    val orderedTurkish = remember(allChannels) {
+        allChannels.filter { chan ->
+            PREFERRED_TURKISH_ORDER.contains(chan.id)
+        }.sortedBy { chan ->
+            PREFERRED_TURKISH_ORDER.indexOf(chan.id)
+        }
+    }
+    val national = remember(allChannels) {
+        allChannels.filter { it.category.equals(CategoryHelper.CAT_NATIONAL, ignoreCase = true) }
+            .sortedWith(
+                compareBy<IPTVChannel> {
+                    val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
+                    if (idx != -1) idx else 999
+                }.thenBy { it.name }
+            )
+    }
+    val sports = remember(allChannels) {
+        allChannels.filter { it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) }
+            .sortedWith(
+                compareBy<IPTVChannel> {
+                    val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
+                    if (idx != -1) idx else 999
+                }.thenBy { it.name }
+            )
+    }
+    val news = remember(allChannels) {
+        allChannels.filter { it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) }
+            .sortedWith(
+                compareBy<IPTVChannel> {
+                    val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
+                    if (idx != -1) idx else 999
+                }.thenBy { it.name }
+            )
+    }
     val music = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_MUSIC, ignoreCase = true) } }
     val local = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_LOCAL, ignoreCase = true) } }
     val movies = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) } }
@@ -1816,6 +2373,18 @@ fun TvShelvesView(
                 TvShelfRow(
                     title = "★ Favorilerim",
                     channels = favoriteChannels,
+                    onChannelFocused = onChannelFocused,
+                    onChannelClick = onChannelClick,
+                    onChannelLongClick = onChannelLongClick
+                )
+            }
+        }
+
+        if (orderedTurkish.isNotEmpty()) {
+            item {
+                TvShelfRow(
+                    title = "🌟 Türkiye'nin En Çok İzlenen Kanalları",
+                    channels = orderedTurkish,
                     onChannelFocused = onChannelFocused,
                     onChannelClick = onChannelClick,
                     onChannelLongClick = onChannelLongClick
@@ -1954,104 +2523,525 @@ fun TvShelfCard(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val themeConfig = LocalThemeConfig.current
+    val palette = themeConfig.palette
     var isFocused by remember { mutableStateOf(false) }
+
     val scaleAnim by animateFloatAsState(
         targetValue = if (isFocused) 1.08f else 1.0f,
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
         label = "tv_card_scale"
     )
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isFocused) SurfaceBlue else Color(0xFF0C1636).copy(alpha = 0.85f)
-        ),
-        border = BorderStroke(
-            if (isFocused) 2.5.dp else 1.dp,
-            if (isFocused) AuroraCyan else Color.White.copy(alpha = 0.08f)
-        ),
-        modifier = modifier
-            .width(180.dp)
-            .height(115.dp)
-            .scale(scaleAnim)
-            .dpadFocusable(
-                onSelect = onClick,
-                onLongSelect = onLongClick,
-                onFocusChanged = {
-                    isFocused = it
-                    if (it) onFocused()
-                }
-            )
-            .clickable(onClick = onClick)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Top Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    color = Color(0xFF07122C),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "1080p",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = AuroraCyan,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+    when (palette) {
+        AppColorPalette.TIVIMATE -> {
+            Card(
+                shape = RoundedCornerShape(4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFocused) Color(0xFF1F1F1F) else Color(0xFF0F0F0F)
+                ),
+                border = BorderStroke(
+                    if (isFocused) 2.dp else 1.dp,
+                    if (isFocused) palette.secondary else Color.White.copy(alpha = 0.05f)
+                ),
+                modifier = modifier
+                    .width(170.dp)
+                    .height(95.dp)
+                    .scale(scaleAnim)
+                    .dpadFocusable(
+                        onSelect = onClick,
+                        onLongSelect = onLongClick,
+                        onFocusChanged = {
+                            isFocused = it
+                            if (it) onFocused()
+                        }
                     )
-                }
-
-                if (channel.isFavorite) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        tint = LiveRed,
-                        modifier = Modifier.size(12.dp)
-                    )
-                }
-            }
-
-            // Centered Logo
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF080F24)),
-                contentAlignment = Alignment.Center
+                    .clickable(onClick = onClick)
             ) {
-                ChannelLogoImage(
-                    logoUrl = channel.logoUrl,
-                    category = channel.category,
-                    channelName = channel.name,
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(5.dp)
-                )
-            }
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = channel.category.uppercase(),
+                            color = palette.secondary.copy(alpha = 0.8f),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (channel.isFavorite) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = null,
+                                tint = Color(0xFFFF3B5C),
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
+                    }
 
-            // Name
-            Text(
-                text = channel.name,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ChannelLogoImage(
+                                logoUrl = channel.logoUrl,
+                                category = channel.category,
+                                channelName = channel.name,
+                                modifier = Modifier.fillMaxSize().padding(3.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (isFocused) {
+                        LinearProgressIndicator(
+                            progress = { 0.45f },
+                            modifier = Modifier.fillMaxWidth().height(2.dp),
+                            color = palette.secondary,
+                            trackColor = Color.Transparent
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                }
+            }
+        }
+        AppColorPalette.NETFLIX -> {
+            Card(
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFocused) Color(0xFF262626) else Color(0xFF141414)
                 ),
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
+                border = BorderStroke(
+                    if (isFocused) 2.dp else 0.5.dp,
+                    if (isFocused) palette.secondary else Color.White.copy(alpha = 0.05f)
+                ),
+                modifier = modifier
+                    .width(185.dp)
+                    .height(110.dp)
+                    .scale(scaleAnim)
+                    .dpadFocusable(
+                        onSelect = onClick,
+                        onLongSelect = onLongClick,
+                        onFocusChanged = {
+                            isFocused = it
+                            if (it) onFocused()
+                        }
+                    )
+                    .clickable(onClick = onClick)
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = palette.secondary,
+                                shape = RoundedCornerShape(2.dp)
+                            ) {
+                                Text(
+                                    text = "LIVE",
+                                    color = Color.White,
+                                    fontSize = 7.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                            if (channel.isFavorite) {
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = null,
+                                    tint = palette.secondary,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = channel.name,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 12.sp
+                                ),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = channel.category,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = Color.White.copy(alpha = 0.5f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    if (isFocused) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .align(Alignment.BottomCenter)
+                                .background(palette.secondary)
+                        )
+                    }
+                }
+            }
+        }
+        AppColorPalette.APPLE_TV -> {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFocused) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f)
+                ),
+                border = BorderStroke(
+                    if (isFocused) 2.dp else 1.dp,
+                    if (isFocused) Color.White else Color.White.copy(alpha = 0.1f)
+                ),
+                modifier = modifier
+                    .width(180.dp)
+                    .height(115.dp)
+                    .scale(scaleAnim)
+                    .dpadFocusable(
+                        onSelect = onClick,
+                        onLongSelect = onLongClick,
+                        onFocusChanged = {
+                            isFocused = it
+                            if (it) onFocused()
+                        }
+                    )
+                    .clickable(onClick = onClick)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ChannelLogoImage(
+                            logoUrl = channel.logoUrl,
+                            category = channel.category,
+                            channelName = channel.name,
+                            modifier = Modifier.fillMaxSize().padding(5.dp)
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = channel.category,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = if (isFocused) Color.White else palette.secondary.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+        AppColorPalette.PLEX -> {
+            Card(
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFocused) Color(0xFF333333) else Color(0xFF1E1E1E)
+                ),
+                border = BorderStroke(
+                    if (isFocused) 2.dp else 0.dp,
+                    if (isFocused) palette.secondary else Color.Transparent
+                ),
+                modifier = modifier
+                    .width(175.dp)
+                    .height(110.dp)
+                    .scale(scaleAnim)
+                    .dpadFocusable(
+                        onSelect = onClick,
+                        onLongSelect = onLongClick,
+                        onFocusChanged = {
+                            isFocused = it
+                            if (it) onFocused()
+                        }
+                    )
+                    .clickable(onClick = onClick)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ChannelLogoImage(
+                                logoUrl = channel.logoUrl,
+                                category = channel.category,
+                                channelName = channel.name,
+                                modifier = Modifier.fillMaxSize().padding(4.dp)
+                            )
+                        }
+                        if (channel.isFavorite) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = null,
+                                tint = palette.secondary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
+                    }
+
+                    Column {
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = channel.category,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = palette.secondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+        AppColorPalette.DIGITURK -> {
+            val channelIndex = 120 + (channel.id.hashCode() % 100).coerceAtLeast(1)
+            Card(
+                shape = RoundedCornerShape(0.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFocused) Color(0xFF220000) else Color(0xFF0C0C0C)
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (isFocused) palette.secondary else Color.White.copy(alpha = 0.05f)
+                ),
+                modifier = modifier
+                    .width(180.dp)
+                    .height(105.dp)
+                    .scale(scaleAnim)
+                    .dpadFocusable(
+                        onSelect = onClick,
+                        onLongSelect = onLongClick,
+                        onFocusChanged = {
+                            isFocused = it
+                            if (it) onFocused()
+                        }
+                    )
+                    .clickable(onClick = onClick)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp, 22.dp)
+                                .background(if (isFocused) palette.secondary else Color(0xFF222222)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "%03d".format(channelIndex),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+                        if (channel.isFavorite) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = null,
+                                tint = palette.secondary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
+                    }
+
+                    Column {
+                        Text(
+                            text = channel.name.uppercase(),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            ),
+                            color = if (isFocused) palette.secondary else Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = channel.category,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = Color.White.copy(alpha = 0.4f),
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+        else -> {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFocused) SurfaceBlue else Color(0xFF0C1636).copy(alpha = 0.85f)
+                ),
+                border = BorderStroke(
+                    if (isFocused) 2.5.dp else 1.dp,
+                    if (isFocused) AuroraCyan else Color.White.copy(alpha = 0.08f)
+                ),
+                modifier = modifier
+                    .width(180.dp)
+                    .height(115.dp)
+                    .scale(scaleAnim)
+                    .dpadFocusable(
+                        onSelect = onClick,
+                        onLongSelect = onLongClick,
+                        onFocusChanged = {
+                            isFocused = it
+                            if (it) onFocused()
+                        }
+                    )
+                    .clickable(onClick = onClick)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFF07122C),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "1080p",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = AuroraCyan,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+
+                        if (channel.isFavorite) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = null,
+                                tint = LiveRed,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF080F24)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ChannelLogoImage(
+                            logoUrl = channel.logoUrl,
+                            category = channel.category,
+                            channelName = channel.name,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(5.dp)
+                        )
+                    }
+
+                    Text(
+                        text = channel.name,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        ),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 }
@@ -2090,6 +3080,120 @@ fun TvCategoryGrid(
     }
 }
 
+@Composable
+fun TvWorldCategoryGrid(
+    viewModel: MainViewModel,
+    allChannels: List<IPTVChannel>,
+    onChannelFocused: (IPTVChannel) -> Unit,
+    onChannelClick: (IPTVChannel) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val selectedCountry by viewModel.worldSelectedCountry.collectAsState()
+    val selectedGenre by viewModel.worldSelectedGenre.collectAsState()
+
+    val countries = listOf("Tümü", "Azerbaycan", "Almanya", "ABD", "İngiltere", "Fransa", "İtalya", "İspanya", "Rusya", "Global / Diğer")
+    val genres = listOf("Tümü", "Spor", "Haber", "Müzik", "Belgesel", "Çocuk", "Film/Dizi")
+
+    val filteredChannels = remember(allChannels, selectedCountry, selectedGenre) {
+        allChannels.filter { chan ->
+            val detectedCountry = CategoryHelper.detectCountry(chan.name, chan.groupTitle)
+            val countryMatch = if (selectedCountry == "Tümü") {
+                detectedCountry != "Türkiye"
+            } else {
+                detectedCountry.equals(selectedCountry, ignoreCase = true)
+            }
+            val smartGenre = CategoryHelper.getSmartCategory(chan.name, chan.groupTitle, chan.tvgId)
+            val genreMatch = if (selectedGenre == "Tümü") true
+            else {
+                smartGenre.contains(selectedGenre, ignoreCase = true) || chan.category.contains(selectedGenre, ignoreCase = true)
+            }
+            countryMatch && genreMatch
+        }.sortedWith(
+            compareByDescending<IPTVChannel> { it.isFavorite }
+                .thenBy { it.name }
+        )
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Text(
+            text = "🌐 Dünya Kanalları ($selectedCountry • ${filteredChannels.size} Kanal)",
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            color = AuroraCyan,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        // Country Filter Chips
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(countries) { country ->
+                val isSelected = selectedCountry == country
+                Surface(
+                    color = if (isSelected) AuroraCyan else SurfaceBlue.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, if (isSelected) AuroraCyan else Color.White.copy(alpha = 0.1f)),
+                    modifier = Modifier.clickable { viewModel.setWorldSelectedCountry(country) }
+                ) {
+                    Text(
+                        text = country,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        color = if (isSelected) DeepSpaceBlue else Color.White,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
+        // Genre Filter Chips
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(genres) { genre ->
+                val isSelected = selectedGenre == genre
+                Surface(
+                    color = if (isSelected) AuroraPurple else SurfaceBlue.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, if (isSelected) AuroraPurple else Color.White.copy(alpha = 0.08f)),
+                    modifier = Modifier.clickable { viewModel.setWorldSelectedGenre(genre) }
+                ) {
+                    Text(
+                        text = genre,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 170.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(filteredChannels, key = { it.id }) { channel ->
+                TvShelfCard(
+                    channel = channel,
+                    onFocused = { onChannelFocused(channel) },
+                    onClick = { onChannelClick(channel) },
+                    onLongClick = {}
+                )
+            }
+        }
+    }
+}
+
 /* ==========================================================================
    SETTINGS & AUXILIARY VIEWS
    ========================================================================== */
@@ -2117,7 +3221,7 @@ fun MobileSettingsView(
             color = Color.White
         )
 
-        // 1. Color Palette Selector
+        // 1. Premium TV Tema & Tasarım Sistemi Selector
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = currentPalette.surface.copy(alpha = 0.7f)),
@@ -2125,12 +3229,12 @@ fun MobileSettingsView(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "Arayüz Renk Paleti (3 Seçenek)",
+                    text = "Premium TV Tema & Tasarım Sistemi",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = currentPalette.secondary
                 )
                 Text(
-                    text = "Uygulamanın genelinde kullanılacak fütüristik renk temasını seçin. Tercihiniz otomatik olarak kaydedilir.",
+                    text = "Uygulamanın genelinde kullanılacak 5 Premium TV tasarımı (TiviMate, Netflix, Apple TV, Plex, Digiturk) ve özel renk paletlerinden birini seçin. Tercihiniz otomatik kaydedilir ve her açılışta uygulanır.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.8f)
                 )
@@ -2138,14 +3242,32 @@ fun MobileSettingsView(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppColorPalette.values().forEach { paletteOption ->
                         val isSelected = paletteOption == currentPalette
+                        val isPremiumTheme = paletteOption in listOf(
+                            AppColorPalette.TIVIMATE, 
+                            AppColorPalette.NETFLIX, 
+                            AppColorPalette.APPLE_TV, 
+                            AppColorPalette.PLEX, 
+                            AppColorPalette.DIGITURK
+                        )
+                        val themeEmoji = when (paletteOption) {
+                            AppColorPalette.FENERBAHCE -> "⭐"
+                            AppColorPalette.CYBER_NEON -> "⚡"
+                            AppColorPalette.EMERALD_NIGHT -> "💚"
+                            AppColorPalette.TIVIMATE -> "💎"
+                            AppColorPalette.NETFLIX -> "🎬"
+                            AppColorPalette.APPLE_TV -> "🍏"
+                            AppColorPalette.PLEX -> "🍁"
+                            AppColorPalette.DIGITURK -> "🔴"
+                        }
+
                         Card(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) paletteOption.primary.copy(alpha = 0.3f) else Color.Transparent
+                                containerColor = if (isSelected) paletteOption.primary.copy(alpha = 0.25f) else Color.Transparent
                             ),
                             border = BorderStroke(
                                 if (isSelected) 1.5.dp else 1.dp,
-                                if (isSelected) paletteOption.secondary else Color.White.copy(alpha = 0.1f)
+                                if (isSelected) paletteOption.secondary else Color.White.copy(alpha = 0.08f)
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2158,21 +3280,47 @@ fun MobileSettingsView(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // Primary & Secondary indicator dot
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    // Theme Accent Color Circle
                                     Box(
                                         modifier = Modifier
-                                            .size(16.dp)
+                                            .size(24.dp)
                                             .clip(CircleShape)
-                                            .background(paletteOption.secondary)
-                                    )
+                                            .background(paletteOption.secondary),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = themeEmoji, fontSize = 11.sp)
+                                    }
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
-                                        Text(
-                                            text = paletteOption.title,
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = Color.White
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = paletteOption.title,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = Color.White
+                                            )
+                                            if (isPremiumTheme) {
+                                                Surface(
+                                                    color = paletteOption.secondary.copy(alpha = 0.15f),
+                                                    border = BorderStroke(1.dp, paletteOption.secondary.copy(alpha = 0.5f)),
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "PREMIUM TEMA",
+                                                        color = paletteOption.secondary,
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontWeight = FontWeight.Bold, 
+                                                            fontSize = 8.sp
+                                                        ),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Text(
                                             text = paletteOption.subtitle,
                                             style = MaterialTheme.typography.labelSmall,

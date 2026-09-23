@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.AuroraApplication
 import com.example.data.repository.ChannelRepository
+import com.example.data.repository.sortChannelsWithUserPreference
+import com.example.data.repository.PREFERRED_TURKISH_ORDER
 import com.example.domain.model.EPGProgram
 import com.example.domain.model.IPTVChannel
 import com.example.domain.model.VODItem
@@ -196,12 +198,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // World Channels Tab filtering
+    // World Channels Tab filtering & Smart Filtering Persistence
+    private val _isWorldTabActive = MutableStateFlow(false)
+    val isWorldTabActive: StateFlow<Boolean> = _isWorldTabActive.asStateFlow()
+
     private val _worldSelectedCountry = MutableStateFlow("Tümü")
     val worldSelectedCountry: StateFlow<String> = _worldSelectedCountry.asStateFlow()
 
     private val _worldSelectedGenre = MutableStateFlow("Tümü")
     val worldSelectedGenre: StateFlow<String> = _worldSelectedGenre.asStateFlow()
+
+    fun setWorldTabActive(active: Boolean) {
+        _isWorldTabActive.value = active
+    }
 
     fun setWorldSelectedCountry(country: String) {
         _worldSelectedCountry.value = country
@@ -211,8 +220,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _worldSelectedGenre.value = genre
     }
 
+    fun getOrderedChannels(): List<IPTVChannel> {
+        return sortChannelsWithUserPreference(
+            channels = allChannels.value,
+            isWorldTab = _isWorldTabActive.value,
+            selectedCountry = _worldSelectedCountry.value,
+            selectedGenre = _worldSelectedGenre.value
+        )
+    }
+
     fun playChannelByNumber(number: Int) {
-        val channels = allChannels.value
+        val channels = getOrderedChannels()
         if (channels.isEmpty()) return
         val targetIndex = (number - 1).coerceIn(0, channels.size - 1)
         val targetChannel = channels[targetIndex]
@@ -239,14 +257,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         playerEngineManager.onAutoNextRequested = {
-            val current = _activeChannel.value
-            val list = allChannels.value
-            if (current != null && list.isNotEmpty()) {
-                val currentIndex = list.indexOfFirst { it.id == current.id }
-                if (currentIndex >= 0 && currentIndex < list.size - 1) {
-                    selectChannel(list[currentIndex + 1])
-                }
-            }
+            playNextChannel()
         }
 
         // Seed default highly stable CDN Turkish channels on first launch if empty
@@ -255,8 +266,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val existing = allChannels.first()
             if (existing.isNotEmpty()) {
                 val recents = recentChannels.first()
-                val lastWatched = recents.firstOrNull() ?: existing.firstOrNull()
+                val turkishDefault = existing.find { it.id == "trt_1_hd" } ?: existing.first()
+                val lastWatched = recents.firstOrNull() ?: turkishDefault
                 _heroChannel.value = lastWatched
+                if (_activeChannel.value == null) {
+                    _activeChannel.value = lastWatched
+                }
                 updateHeroSuggestion()
             }
         }
@@ -702,17 +717,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showRemoteToast("Sonraki filme/diziye geçiliyor: ${nextItem.name}")
             }
         } else {
-            val channels = allChannels.value
+            val channels = getOrderedChannels()
+            if (channels.isEmpty()) return
             val currentIndex = channels.indexOfFirst { it.id == current.id }
-            if (currentIndex != -1 && currentIndex < channels.size - 1) {
-                val nextChannel = channels[currentIndex + 1]
-                selectChannel(nextChannel)
-                showRemoteToast("Sonraki kanala geçiliyor: ${nextChannel.name}")
-            } else if (channels.isNotEmpty()) {
-                val nextChannel = channels[0]
-                selectChannel(nextChannel)
-                showRemoteToast("Sonraki kanala geçiliyor: ${nextChannel.name}")
+            val nextChannel = if (currentIndex != -1 && currentIndex < channels.size - 1) {
+                channels[currentIndex + 1]
+            } else {
+                channels.first()
             }
+            selectChannel(nextChannel)
+            showRemoteToast("Sonraki kanala geçiliyor: ${nextChannel.name}")
         }
     }
 
@@ -731,17 +745,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showRemoteToast("Önceki filme/diziye geçiliyor: ${prevItem.name}")
             }
         } else {
-            val channels = allChannels.value
+            val channels = getOrderedChannels()
+            if (channels.isEmpty()) return
             val currentIndex = channels.indexOfFirst { it.id == current.id }
-            if (currentIndex != -1 && currentIndex > 0) {
-                val prevChannel = channels[currentIndex - 1]
-                selectChannel(prevChannel)
-                showRemoteToast("Önceki kanala geçiliyor: ${prevChannel.name}")
-            } else if (channels.isNotEmpty()) {
-                val prevChannel = channels.last()
-                selectChannel(prevChannel)
-                showRemoteToast("Önceki kanala geçiliyor: ${prevChannel.name}")
+            val prevChannel = if (currentIndex > 0) {
+                channels[currentIndex - 1]
+            } else {
+                channels.last()
             }
+            selectChannel(prevChannel)
+            showRemoteToast("Önceki kanala geçiliyor: ${prevChannel.name}")
         }
     }
 

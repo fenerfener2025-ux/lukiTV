@@ -59,6 +59,56 @@ enum class AppColorPalette(
         surface = Color(0xFF081F14),
         surfaceLight = Color(0xFF113624),
         focusGlow = Color(0x4D00E676)
+    ),
+    TIVIMATE(
+        title = "TiviMate Premium",
+        subtitle = "Minimalist Siyah & Camgöbeği Elmas",
+        primary = Color(0xFF0F1F45),
+        secondary = Color(0xFF00B4D8),
+        background = Color(0xFF0A0A0A),
+        surface = Color(0xFF141414),
+        surfaceLight = Color(0xFF1E1E1E),
+        focusGlow = Color(0x4D00B4D8)
+    ),
+    NETFLIX(
+        title = "Netflix Premium",
+        subtitle = "Sinematik Koyu Arka Plan & Canlı Kırmızı",
+        primary = Color(0xFF141414),
+        secondary = Color(0xFFE50914),
+        background = Color(0xFF0A0A0A),
+        surface = Color(0xFF1A1A1A),
+        surfaceLight = Color(0xFF262626),
+        focusGlow = Color(0x4DE50914)
+    ),
+    APPLE_TV(
+        title = "Apple TV+ Premium",
+        subtitle = "Asil Koyu Füme & Okyanus Mavisi",
+        primary = Color(0xFF1C1C1E),
+        secondary = Color(0xFF0A84FF),
+        background = Color(0xFF0D0D0E),
+        surface = Color(0xFF2C2C2E),
+        surfaceLight = Color(0xFF3A3A3C),
+        focusGlow = Color(0x4D0A84FF)
+    ),
+    PLEX(
+        title = "Plex Premium",
+        subtitle = "Mat Antrasit & Plex Turuncu-Sarı",
+        primary = Color(0xFF1F1F1F),
+        secondary = Color(0xFFE5A00D),
+        background = Color(0xFF141414),
+        surface = Color(0xFF282828),
+        surfaceLight = Color(0xFF323232),
+        focusGlow = Color(0x4DE5A00D)
+    ),
+    DIGITURK(
+        title = "Digiturk Premium",
+        subtitle = "Uydu Siyahı & Digiturk Kırmızısı",
+        primary = Color(0xFF0D0D0D),
+        secondary = Color(0xFFCC0000),
+        background = Color(0xFF050505),
+        surface = Color(0xFF111111),
+        surfaceLight = Color(0xFF1A1A1A),
+        focusGlow = Color(0x4DCC0000)
     )
 }
 

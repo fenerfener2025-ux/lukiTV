@@ -56,14 +56,53 @@ class PlayerEngineManager(private val context: Context) {
         engines.forEach { it.setListener(engineListener) }
     }
 
+    /**
+     * Proactively pre-buffers the stream of an upcoming or focused channel
+     * to eliminate startup delays when the user actually switches to it.
+     */
+    fun prebufferChannel(channel: IPTVChannel) {
+        if (channel.streamUrl.isNotBlank()) {
+            PlayerCacheManager.prebufferStream(context, channel.streamUrl)
+        }
+    }
+
     fun playChannel(channel: IPTVChannel) {
         scope.launch {
+            val previousChannel = currentChannel
+            val isMedia3Active = currentEngineIndex == 0 && _activePlayer.value != null
+
+            // 1. Yeni kanalın akış başlığını ve segmentlerini asenkron olarak önbelleğe al (Pre-buffering)
+            PlayerCacheManager.prebufferStream(context, channel.streamUrl)
+
             currentChannel = channel
             currentUrl = channel.streamUrl
             currentMirrorIndex = -1
-            currentEngineIndex = 0
             retryCount = 0
 
+            // 2. Mevcut oynatıcıyı aniden kapatıp ekranı karartmak yerine, kısa bir tampon ön yüklemesi yap:
+            // Media3 zaten çalışıyorsa, mevcut motoru yok etmeden doğrudan yeni medyaya kesintisiz geçiş yap
+            if (isMedia3Active && previousChannel != null && previousChannel.id != channel.id) {
+                _playbackState.value = PlaybackState.Loading("${channel.name} hazırlanıyor...")
+
+                // Kısa tampon ön yükleme gecikmesi (150ms): Yeni akışın soket ve önbellek el sıkışması
+                // tamamlanırken mevcut son kare ekranda kalır, donma ve siyah ekran parlaması minimize edilir.
+                delay(150)
+
+                val media3 = engines[0] as? Media3Engine
+                if (media3 != null && media3.getPlayer() != null) {
+                    currentEngineIndex = 0
+                    media3.play(currentUrl)
+                    _activePlayer.value = media3.getPlayer()
+                    return@launch
+                }
+            }
+
+            // Temiz başlatma: aktif olan farklı motor varsa kaynaklarını serbest bırak
+            if (currentEngineIndex != 0) {
+                engines[currentEngineIndex].release()
+            }
+            stop()
+            currentEngineIndex = 0
             playWithCurrentConfig()
         }
     }
@@ -97,11 +136,12 @@ class PlayerEngineManager(private val context: Context) {
                 delay(1000)
                 playWithCurrentConfig()
             } else if (currentEngineIndex < engines.size - 1) {
-                // Try backup engine
+                // Try backup engine: release current engine first so hardware codecs are freed immediately
+                engines[currentEngineIndex].release()
                 retryCount = 0
                 currentEngineIndex++
                 _playbackState.value = PlaybackState.Loading("Alternatif oynatıcıya geçiliyor (${engines[currentEngineIndex].name})...")
-                delay(500)
+                delay(300)
                 playWithCurrentConfig()
             } else {
                 _playbackState.value = PlaybackState.Error("Kanal şu an çalışmıyor.")
@@ -113,18 +153,22 @@ class PlayerEngineManager(private val context: Context) {
     }
 
     fun pause() {
+        PlayerCacheManager.cancelPrefetch()
         engines[currentEngineIndex].stop()
         _playbackState.value = PlaybackState.Idle
         _activePlayer.value = null
     }
 
     fun stop() {
+        PlayerCacheManager.cancelPrefetch()
         engines.forEach { it.stop() }
         _playbackState.value = PlaybackState.Idle
         _activePlayer.value = null
     }
 
     fun release() {
+        PlayerCacheManager.cancelPrefetch()
+        PlayerCacheManager.releaseCache()
         engines.forEach { it.release() }
         _activePlayer.value = null
     }

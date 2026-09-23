@@ -76,4 +76,20 @@ object CategoryHelper {
             else -> CAT_NATIONAL
         }
     }
+
+    fun getCategoryPriority(category: String): Int {
+        return when {
+            category.equals(CAT_NATIONAL, ignoreCase = true) -> 1
+            category.equals(CAT_SPORTS, ignoreCase = true) -> 2
+            category.equals(CAT_NEWS, ignoreCase = true) -> 3
+            category.equals(CAT_DOCUMENTARY, ignoreCase = true) -> 4
+            category.equals(CAT_KIDS, ignoreCase = true) -> 5
+            category.equals(CAT_MUSIC, ignoreCase = true) -> 6
+            category.equals(CAT_MOVIES, ignoreCase = true) -> 7
+            category.equals(CAT_LOCAL, ignoreCase = true) -> 8
+            category.equals(CAT_TR, ignoreCase = true) -> 9
+            category.equals(CAT_WORLD, ignoreCase = true) -> 10
+            else -> 50
+        }
+    }
 }

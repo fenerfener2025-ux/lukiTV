@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
                             Screen.Home -> {
                                 HomeScreen(
                                     viewModel = viewModel,
-                                    isActive = currentScreen == Screen.Home,
+                                    isActive = (currentScreen == Screen.Home && screen == Screen.Home),
                                     onNavigateToPlayer = { currentScreen = Screen.Player },
                                     onNavigateToSearch = { currentScreen = Screen.Search },
                                     onNavigateToDetail = { channel ->

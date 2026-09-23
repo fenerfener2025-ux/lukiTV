@@ -12,7 +12,38 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import java.nio.ByteBuffer
+
+private class TolerantForwardingAudioSink(sink: AudioSink) : ForwardingAudioSink(sink) {
+    override fun handleBuffer(
+        buffer: ByteBuffer,
+        presentationTimeUs: Long,
+        encodedAccessUnitCount: Int
+    ): Boolean {
+        return try {
+            super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        } catch (e: AudioSink.UnexpectedDiscontinuityException) {
+            Log.w("Media3Engine", "Tolerated audio track timestamp discontinuity: ${e.message}. Resynchronizing audio sink.")
+            buffer.position(buffer.limit())
+            true
+        } catch (e: Exception) {
+            if (e.javaClass.simpleName.contains("Discontinuity", ignoreCase = true) ||
+                e.message?.contains("discontinuity", ignoreCase = true) == true) {
+                Log.w("Media3Engine", "Tolerated audio discontinuity: ${e.message}")
+                buffer.position(buffer.limit())
+                true
+            } else {
+                throw e
+            }
+        }
+    }
+}
 
 class Media3Engine : PlayerEngine {
     override val name: String = "Media3 (ExoPlayer)"
@@ -44,6 +75,22 @@ class Media3Engine : PlayerEngine {
 
         override fun onPlayerError(error: PlaybackException) {
             Log.e("Media3Engine", "ExoPlayer Error: ${error.message}", error)
+            
+            // Check if error is caused by audio sink or timestamp discontinuity
+            val rootCause = error.cause
+            val isDiscontinuity = error.message?.contains("discontinuity", ignoreCase = true) == true ||
+                rootCause?.message?.contains("discontinuity", ignoreCase = true) == true ||
+                rootCause is AudioSink.UnexpectedDiscontinuityException
+
+            if (isDiscontinuity) {
+                Log.w("Media3Engine", "Non-fatal audio discontinuity in onPlayerError. Soft re-preparing.")
+                mainHandler.post {
+                    exoPlayer?.prepare()
+                    exoPlayer?.play()
+                }
+                return
+            }
+
             val turkishMessage = when (error.errorCode) {
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
@@ -90,24 +137,37 @@ class Media3Engine : PlayerEngine {
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(8000)
                 .setReadTimeoutMs(8000)
-            
-            // Fast start load control for instant zapping and smooth playback
-            val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                    15000, // minBufferMs
-                    30000, // maxBufferMs
-                    800,   // bufferForPlaybackMs (instant start)
-                    1500   // bufferForPlaybackAfterRebufferMs
+
+            // Wrap with PlayerCacheManager to provide disk/memory caching of video segments
+            val cacheDataSourceFactory = PlayerCacheManager.createCacheDataSourceFactory(context, httpDataSourceFactory)
+
+            val extractorsFactory = DefaultExtractorsFactory()
+                .setTsExtractorFlags(
+                    DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
+                    DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
+                    DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM
                 )
-                .setPrioritizeTimeOverSizeThresholds(true)
-                .build()
+                .setTsExtractorTimestampSearchBytes(188 * 1000)
 
-            val mediaSourceFactory = DefaultMediaSourceFactory(context)
-                .setDataSourceFactory(httpDataSourceFactory)
+            val mediaSourceFactory = DefaultMediaSourceFactory(context, extractorsFactory)
+                .setDataSourceFactory(cacheDataSourceFactory)
 
-            // Setup renderers with preferred hardware/software codecs
-            val renderersFactory = DefaultRenderersFactory(context).apply {
-                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            // Setup renderers with robust decoder fallback and tolerant audio sink for live stream discontinuities
+            val renderersFactory = object : DefaultRenderersFactory(context) {
+                override fun buildAudioSink(
+                    context: Context,
+                    enableFloatOutput: Boolean,
+                    enableAudioTrackPlaybackParams: Boolean
+                ): AudioSink? {
+                    val defaultSink = DefaultAudioSink.Builder(context)
+                        .setEnableFloatOutput(enableFloatOutput)
+                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .build()
+                    return TolerantForwardingAudioSink(defaultSink)
+                }
+            }.apply {
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+                setEnableDecoderFallback(true)
                 setAllowedVideoJoiningTimeMs(4000)
             }
 
@@ -121,6 +181,17 @@ class Media3Engine : PlayerEngine {
             }
             this.trackSelector = trackSelector
             
+            // Fast start load control for instant zapping (< 1s) with compliant buffer bounds
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    2500,  // minBufferMs (En az bufferForPlaybackAfterRebufferMs kadar olmalı)
+                    10000, // maxBufferMs (TV bellek tasarrufu)
+                    500,   // bufferForPlaybackMs (Anında ilk kare ile hızlı başlangıç)
+                    1000   // bufferForPlaybackAfterRebufferMs (Yeniden tamponlama sonrası başlama)
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+
             exoPlayer = ExoPlayer.Builder(context, renderersFactory)
                 .setTrackSelector(trackSelector)
                 .setMediaSourceFactory(mediaSourceFactory)
@@ -165,6 +236,7 @@ class Media3Engine : PlayerEngine {
     override fun stop() {
         restoreQualityRunnable?.let { mainHandler.removeCallbacks(it) }
         exoPlayer?.stop()
+        exoPlayer?.clearMediaItems()
     }
 
     override fun release() {
