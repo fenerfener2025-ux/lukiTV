@@ -48,6 +48,7 @@ private class TolerantForwardingAudioSink(sink: AudioSink) : ForwardingAudioSink
 class Media3Engine : PlayerEngine {
     override val name: String = "Media3 (ExoPlayer)"
     private var exoPlayer: ExoPlayer? = null
+    private var mediaSession: androidx.media3.session.MediaSession? = null
     private var listener: PlayerEngine.EngineListener? = null
     private var trackSelector: DefaultTrackSelector? = null
     
@@ -87,6 +88,28 @@ class Media3Engine : PlayerEngine {
                 mainHandler.post {
                     exoPlayer?.prepare()
                     exoPlayer?.play()
+                }
+                return
+            }
+
+            val isCodecResourceError = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+                error.message?.contains("Released by resource manager", ignoreCase = true) == true ||
+                rootCause?.message?.contains("Released by resource manager", ignoreCase = true) == true ||
+                error.message?.contains("system resources", ignoreCase = true) == true ||
+                rootCause?.message?.contains("system resources", ignoreCase = true) == true
+
+            if (isCodecResourceError) {
+                Log.w("Media3Engine", "MediaCodec resource released by system manager. Auto-recovering player.")
+                mainHandler.post {
+                    try {
+                        exoPlayer?.stop()
+                        exoPlayer?.prepare()
+                        exoPlayer?.play()
+                    } catch (e: Exception) {
+                        Log.e("Media3Engine", "Failed to recover MediaCodec", e)
+                        listener?.onError("Donanım çözücü kaynağı serbest bırakıldı, yeniden deneniyor.")
+                    }
                 }
                 return
             }
@@ -202,10 +225,20 @@ class Media3Engine : PlayerEngine {
                     playWhenReady = true
                     addListener(playerListener)
                 }
+
+            try {
+                if (mediaSession == null && exoPlayer != null) {
+                    mediaSession = androidx.media3.session.MediaSession.Builder(context, exoPlayer!!)
+                        .setId("PinpirikTVCarSession")
+                        .build()
+                }
+            } catch (e: Exception) {
+                Log.w("Media3Engine", "Could not initialize MediaSession: ${e.message}")
+            }
         }
     }
 
-    override fun play(url: String) {
+    override fun play(url: String, title: String?, artworkUrl: String?) {
         exoPlayer?.let { player ->
             try {
                 // Instantly force lowest bitrate track to make zapping / buffer load incredibly fast!
@@ -216,14 +249,29 @@ class Media3Engine : PlayerEngine {
                     )
                 }
 
-                val mediaItem = if (url.contains(".m3u8", ignoreCase = true)) {
-                    MediaItem.Builder()
-                        .setUri(Uri.parse(url))
-                        .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
-                        .build()
-                } else {
-                    MediaItem.fromUri(Uri.parse(url))
-                }
+                val mediaMetadata = androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle(title ?: "Pinpirik TV")
+                    .setDisplayTitle(title ?: "Pinpirik TV")
+                    .setArtist("PinpirikTV Canlı")
+                    .apply {
+                        if (!artworkUrl.isNullOrBlank()) {
+                            try {
+                                setArtworkUri(Uri.parse(artworkUrl))
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    .build()
+
+                val mediaItem = MediaItem.Builder()
+                    .setUri(Uri.parse(url))
+                    .setMediaMetadata(mediaMetadata)
+                    .apply {
+                        if (url.contains(".m3u8", ignoreCase = true)) {
+                            setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+                        }
+                    }
+                    .build()
+
                 player.setMediaItem(mediaItem)
                 player.prepare()
                 player.play()
@@ -241,6 +289,11 @@ class Media3Engine : PlayerEngine {
 
     override fun release() {
         restoreQualityRunnable?.let { mainHandler.removeCallbacks(it) }
+        try {
+            mediaSession?.release()
+        } catch (_: Exception) {}
+        mediaSession = null
+
         exoPlayer?.let { player ->
             player.removeListener(playerListener)
             player.release()
@@ -250,6 +303,8 @@ class Media3Engine : PlayerEngine {
     }
 
     override fun getPlayer(): Player? = exoPlayer
+
+    fun getMediaSession(): androidx.media3.session.MediaSession? = mediaSession
 
     override fun setListener(listener: PlayerEngine.EngineListener) {
         this.listener = listener

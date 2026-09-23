@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import com.example.data.repository.sortChannelsWithUserPreference
 import com.example.data.repository.PREFERRED_TURKISH_ORDER
+import com.example.domain.model.AppAspectRatio
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.tv.dpadFocusable
 import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.foundation.lazy.list.items as tvItems
@@ -228,8 +230,7 @@ fun PlayerScreen(
         }
     }
 
-    var resizeModeIndex by remember { mutableIntStateOf(0) } // 0: FIT, 1: FILL, 2: ZOOM
-    val resizeModeNames = listOf("Sığdır (FIT)", "Tam Ekran (FILL)", "Yakınlaştır (ZOOM)")
+    val currentAspectRatio by viewModel.aspectRatio.collectAsStateWithLifecycle()
 
     // Immersive Full Screen System Bar Hiding for Mobile & TV
     DisposableEffect(Unit) {
@@ -395,12 +396,7 @@ fun PlayerScreen(
             },
             update = { pv ->
                 pv.player = activePlayerInstance
-                pv.resizeMode = when (resizeModeIndex) {
-                    0 -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                    2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                }
+                pv.resizeMode = currentAspectRatio.resizeMode
             },
             onRelease = { pv ->
                 pv.player = null
@@ -793,14 +789,17 @@ fun PlayerScreen(
                         }
 
                         IconButton(
-                            onClick = { resizeModeIndex = (resizeModeIndex + 1) % 3 },
+                            onClick = { viewModel.cycleNextAspectRatio() },
                             modifier = Modifier.size(36.dp)
                         ) {
                             Text(
-                                text = when (resizeModeIndex) {
-                                    0 -> "16:9"
-                                    1 -> "FIT"
-                                    else -> "ZOOM"
+                                text = when (currentAspectRatio) {
+                                    AppAspectRatio.AUTO_FIT -> "AUTO"
+                                    AppAspectRatio.FILL_STRETCH -> "FILL"
+                                    AppAspectRatio.ZOOM_CROP -> "ZOOM"
+                                    AppAspectRatio.RATIO_16_9 -> "16:9"
+                                    AppAspectRatio.RATIO_4_3 -> "4:3"
+                                    AppAspectRatio.RATIO_21_9 -> "21:9"
                                 },
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = palette.secondary

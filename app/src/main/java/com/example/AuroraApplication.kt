@@ -8,6 +8,11 @@ import com.example.player.PlayerEngineManager
 
 class AuroraApplication : Application() {
 
+    companion object {
+        lateinit var instance: AuroraApplication
+            private set
+    }
+
     // Dependency Container / Service Locator manual DI
     lateinit var database: AppDatabase
     lateinit var repository: ChannelRepository
@@ -16,6 +21,7 @@ class AuroraApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         database = AppDatabase.getDatabase(this)
         repository = ChannelRepository(database.channelDao(), database.epgDao(), this)
         vodRepository = VODRepository(this)

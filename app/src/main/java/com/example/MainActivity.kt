@@ -53,7 +53,8 @@ enum class Screen {
     Player,
     Search,
     Detail,
-    AddPlaylist
+    AddPlaylist,
+    CarMode
 }
 
 class MainActivity : ComponentActivity() {
@@ -121,7 +122,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        Screen.Search, Screen.Detail, Screen.AddPlaylist -> {
+                        Screen.Search, Screen.Detail, Screen.AddPlaylist, Screen.CarMode -> {
                             currentScreen = Screen.Home
                         }
                         Screen.Home -> {
@@ -175,7 +176,8 @@ class MainActivity : ComponentActivity() {
                                         selectedDetailChannel = channel
                                         currentScreen = Screen.Detail
                                     },
-                                    onNavigateToAddPlaylist = { currentScreen = Screen.AddPlaylist }
+                                    onNavigateToAddPlaylist = { currentScreen = Screen.AddPlaylist },
+                                    onNavigateToCarMode = { currentScreen = Screen.CarMode }
                                 )
                             }
                             Screen.Player -> {
@@ -213,6 +215,12 @@ class MainActivity : ComponentActivity() {
                             }
                             Screen.AddPlaylist -> {
                                 AddPlaylistScreen(
+                                    viewModel = viewModel,
+                                    onNavigateBack = { currentScreen = Screen.Home }
+                                )
+                            }
+                            Screen.CarMode -> {
+                                CarModeScreen(
                                     viewModel = viewModel,
                                     onNavigateBack = { currentScreen = Screen.Home }
                                 )
@@ -378,6 +386,28 @@ class MainActivity : ComponentActivity() {
             in 144..153 -> {
                 val digit = (keyCode - 144).toString()
                 viewModel.handleNumericKeyPress(digit)
+                return true
+            }
+            // Android Car & Steering Wheel Media controls: Next / Prev / Play-Pause / Stop
+            android.view.KeyEvent.KEYCODE_MEDIA_NEXT,
+            android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                viewModel.playNextChannel()
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+            android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                viewModel.playPreviousChannel()
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
+            android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
+            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            android.view.KeyEvent.KEYCODE_HEADSETHOOK -> {
+                viewModel.togglePlayPause()
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_MEDIA_STOP -> {
+                viewModel.stopPlayback()
                 return true
             }
         }

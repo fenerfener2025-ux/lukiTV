@@ -14,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -56,6 +57,12 @@ import com.example.data.repository.OPEN_SOURCE_PRESETS
 import com.example.data.repository.PresetSource
 import com.example.data.repository.PREFERRED_TURKISH_ORDER
 import com.example.data.repository.sortChannelsWithUserPreference
+import com.example.data.repository.sortCategoryChannelsWithTurkishPriority
+import com.example.domain.model.AppAspectRatio
+import com.example.domain.model.BufferProfile
+import com.example.domain.model.PlayerEngineType
+import com.example.domain.model.StartupTabOption
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.IPTVChannel
 import com.example.player.PlayerCacheManager
 import com.example.ui.components.SilentPreviewPlayer
@@ -71,6 +78,7 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToDetail: (IPTVChannel) -> Unit,
     onNavigateToAddPlaylist: () -> Unit,
+    onNavigateToCarMode: () -> Unit = {},
     isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -162,6 +170,7 @@ fun HomeScreen(
                 onNavigateToDetail = onNavigateToDetail,
                 onNavigateToSearch = onNavigateToSearch,
                 onNavigateToAddPlaylist = onNavigateToAddPlaylist,
+                onNavigateToCarMode = onNavigateToCarMode,
                 isActive = isActive
             )
         }
@@ -188,6 +197,7 @@ fun MobileHomeScreen(
     onNavigateToDetail: (IPTVChannel) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToAddPlaylist: () -> Unit,
+    onNavigateToCarMode: () -> Unit = {},
     isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -262,21 +272,16 @@ fun MobileHomeScreen(
             }
         }
 
-        // Sort so that favorites are grouped at the top of the list, followed by user preferred order and category priority
+        // Sort so that favorites and Turkish channels are strictly prioritized at the top of the list
         when (activeTab) {
-            1 -> filtered.sortedBy { it.name }
+            1 -> sortCategoryChannelsWithTurkishPriority(filtered)
             2 -> filtered.sortedWith(
                 compareByDescending<IPTVChannel> { it.isFavorite }
                     .thenBy { it.name }
             )
             else -> {
-                // Live TV / Turkish channels: User requested priority order (TRT 1, TRT 2, ATV, Kanal D, Show, Star, Halk, Sözcü, TRT Spor, HT Spor, A Spor...)
-                filtered.sortedWith(
-                    compareBy<IPTVChannel> {
-                        val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
-                        if (idx != -1) idx else (1000 + CategoryHelper.getCategoryPriority(it.category))
-                    }.thenBy { it.name }
-                )
+                // Live TV / Kategori sekmeleri: En çok izlenen Türk kanalları daima en başta, ardından diğer Türk kanalları, sonra yabancı kanallar
+                sortCategoryChannelsWithTurkishPriority(filtered)
             }
         }
     }
@@ -452,6 +457,22 @@ fun MobileHomeScreen(
                             imageVector = Icons.Default.Add,
                             contentDescription = "M3U Ekle",
                             tint = palette.secondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onNavigateToCarMode,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(palette.surface.copy(alpha = 0.6f))
+                            .testTag("home_car_mode_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.DirectionsCar,
+                            contentDescription = "Araç / Sürüş Modu",
+                            tint = AuroraCyan,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -780,7 +801,7 @@ fun TabFiltersRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(categories) { (catId, label) ->
+                items(categories, key = { it.first }) { (catId, label) ->
                     val isSelected = selectedCategory == catId
                     Surface(
                         color = if (isSelected) palette.secondary else palette.surface.copy(alpha = 0.6f),
@@ -816,7 +837,7 @@ fun TabFiltersRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(countries) { country ->
+                    items(countries, key = { it }) { country ->
                         val isSelected = selectedCountry == country
                         Surface(
                             color = if (isSelected) palette.secondary else palette.surface.copy(alpha = 0.6f),
@@ -864,7 +885,7 @@ fun TabFiltersRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(genres) { genre ->
+                    items(genres, key = { it }) { genre ->
                         val isSelected = selectedGenre == genre
                         Surface(
                             color = if (isSelected) palette.secondary.copy(alpha = 0.2f) else Color.Transparent,
@@ -900,6 +921,15 @@ fun ChannelsLazyList(
     palette: AppColorPalette,
     modifier: Modifier = Modifier
 ) {
+    val listState = rememberLazyListState()
+
+    // Always reset channel list scroll position to top (Index 0) on launch or tab/filter change
+    LaunchedEffect(channels.firstOrNull()?.id, activeTab) {
+        if (channels.isNotEmpty()) {
+            listState.scrollToItem(0)
+        }
+    }
+
     if (channels.isEmpty()) {
         Box(
             modifier = modifier
@@ -935,6 +965,7 @@ fun ChannelsLazyList(
         }
     } else {
         LazyColumn(
+            state = listState,
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1801,12 +1832,13 @@ fun TvHomeScreen(
                         2 -> {
                             // 2: "Spor"
                             val sportsList = remember(processedChannels) {
-                                processedChannels.filter {
+                                val rawSports = processedChannels.filter {
                                     it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) ||
                                     it.name.contains("spor", ignoreCase = true) ||
                                     it.name.contains("sport", ignoreCase = true) ||
                                     it.name.contains("bein", ignoreCase = true)
-                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                                }
+                                sortCategoryChannelsWithTurkishPriority(rawSports)
                             }
                             TvCategoryGrid(
                                 title = "⚽ Spor Kanalları",
@@ -1821,11 +1853,12 @@ fun TvHomeScreen(
                         3 -> {
                             // 3: "Haber"
                             val newsList = remember(processedChannels) {
-                                processedChannels.filter {
+                                val rawNews = processedChannels.filter {
                                     it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) ||
                                     it.name.contains("haber", ignoreCase = true) ||
                                     it.name.contains("news", ignoreCase = true)
-                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                                }
+                                sortCategoryChannelsWithTurkishPriority(rawNews)
                             }
                             TvCategoryGrid(
                                 title = "📰 Haber & Gündem",
@@ -1840,12 +1873,13 @@ fun TvHomeScreen(
                         4 -> {
                             // 4: "Sinema & Dizi"
                             val movieList = remember(processedChannels) {
-                                processedChannels.filter {
+                                val rawMovies = processedChannels.filter {
                                     it.category.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) ||
                                     it.name.contains("sinema", ignoreCase = true) ||
                                     it.name.contains("film", ignoreCase = true) ||
                                     it.name.contains("dizi", ignoreCase = true)
-                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                                }
+                                sortCategoryChannelsWithTurkishPriority(rawMovies)
                             }
                             TvCategoryGrid(
                                 title = "🎬 Film & Sinema",
@@ -1860,13 +1894,14 @@ fun TvHomeScreen(
                         5 -> {
                             // 5: "Belgesel & Doğa"
                             val docList = remember(processedChannels) {
-                                processedChannels.filter {
+                                val rawDocs = processedChannels.filter {
                                     it.category.equals(CategoryHelper.CAT_DOCUMENTARY, ignoreCase = true) ||
                                     it.name.contains("belgesel", ignoreCase = true) ||
                                     it.name.contains("docu", ignoreCase = true) ||
                                     it.name.contains("discovery", ignoreCase = true) ||
                                     it.name.contains("geographic", ignoreCase = true)
-                                }.sortedWith(compareByDescending<IPTVChannel> { it.isFavorite }.thenBy { it.name })
+                                }
+                                sortCategoryChannelsWithTurkishPriority(rawDocs)
                             }
                             TvCategoryGrid(
                                 title = "🌿 Belgesel & Doğa",
@@ -2327,40 +2362,35 @@ fun TvShelvesView(
         }
     }
     val national = remember(allChannels) {
-        allChannels.filter { it.category.equals(CategoryHelper.CAT_NATIONAL, ignoreCase = true) }
-            .sortedWith(
-                compareBy<IPTVChannel> {
-                    val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
-                    if (idx != -1) idx else 999
-                }.thenBy { it.name }
-            )
+        val raw = allChannels.filter { it.category.equals(CategoryHelper.CAT_NATIONAL, ignoreCase = true) }
+        sortCategoryChannelsWithTurkishPriority(raw)
     }
     val sports = remember(allChannels) {
-        allChannels.filter { it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) }
-            .sortedWith(
-                compareBy<IPTVChannel> {
-                    val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
-                    if (idx != -1) idx else 999
-                }.thenBy { it.name }
-            )
+        val raw = allChannels.filter { it.category.equals(CategoryHelper.CAT_SPORTS, ignoreCase = true) }
+        sortCategoryChannelsWithTurkishPriority(raw)
     }
     val news = remember(allChannels) {
-        allChannels.filter { it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) }
-            .sortedWith(
-                compareBy<IPTVChannel> {
-                    val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
-                    if (idx != -1) idx else 999
-                }.thenBy { it.name }
-            )
+        val raw = allChannels.filter { it.category.equals(CategoryHelper.CAT_NEWS, ignoreCase = true) }
+        sortCategoryChannelsWithTurkishPriority(raw)
     }
-    val music = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_MUSIC, ignoreCase = true) } }
-    val local = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_LOCAL, ignoreCase = true) } }
-    val movies = remember(allChannels) { allChannels.filter { it.category.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) } }
+    val music = remember(allChannels) {
+        val raw = allChannels.filter { it.category.equals(CategoryHelper.CAT_MUSIC, ignoreCase = true) }
+        sortCategoryChannelsWithTurkishPriority(raw)
+    }
+    val local = remember(allChannels) {
+        val raw = allChannels.filter { it.category.equals(CategoryHelper.CAT_LOCAL, ignoreCase = true) }
+        sortCategoryChannelsWithTurkishPriority(raw)
+    }
+    val movies = remember(allChannels) {
+        val raw = allChannels.filter { it.category.equals(CategoryHelper.CAT_MOVIES, ignoreCase = true) }
+        sortCategoryChannelsWithTurkishPriority(raw)
+    }
     val kidsAndDoc = remember(allChannels) {
-        allChannels.filter {
+        val raw = allChannels.filter {
             it.category.equals(CategoryHelper.CAT_DOCUMENTARY, ignoreCase = true) ||
             it.category.equals(CategoryHelper.CAT_KIDS, ignoreCase = true)
         }
+        sortCategoryChannelsWithTurkishPriority(raw)
     }
 
     LazyColumn(
@@ -3129,7 +3159,7 @@ fun TvWorldCategoryGrid(
                 .padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(countries) { country ->
+            items(countries, key = { it }) { country ->
                 val isSelected = selectedCountry == country
                 Surface(
                     color = if (isSelected) AuroraCyan else SurfaceBlue.copy(alpha = 0.5f),
@@ -3156,7 +3186,7 @@ fun TvWorldCategoryGrid(
                 .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(genres) { genre ->
+            items(genres, key = { it }) { genre ->
                 val isSelected = selectedGenre == genre
                 Surface(
                     color = if (isSelected) AuroraPurple else SurfaceBlue.copy(alpha = 0.4f),
@@ -3220,6 +3250,48 @@ fun MobileSettingsView(
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
             color = Color.White
         )
+
+        // ⚡ Hızlı Performans Modu (Lite Mode) - Düşük Donanımlı Cihazlar İçin
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = currentPalette.surface.copy(alpha = 0.85f)),
+            border = BorderStroke(1.5.dp, Color(0xFFFFD700))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val isFastPerformanceMode by viewModel.fastPerformanceMode.collectAsStateWithLifecycle()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "⚡ Hızlı Performans Modu (Lite Mode)",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFFFD700)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Görsel efektleri, bulanıklıkları ve ağır grafikleri kapatır. Düşük donanımlı Android TV, TV Box ve eski telefonlarda kanal gezinmesini maksimum hıza ulaştırır. Hiçbir özellik kaybolmaz.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.9f),
+                            lineHeight = 18.sp
+                        )
+                    }
+                    Switch(
+                        checked = isFastPerformanceMode,
+                        onCheckedChange = { viewModel.setFastPerformanceMode(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFFFFD700),
+                            checkedTrackColor = Color(0xFFFFD700).copy(alpha = 0.35f)
+                        )
+                    )
+                }
+            }
+        }
 
         // 1. Premium TV Tema & Tasarım Sistemi Selector
         Card(
@@ -3422,7 +3494,455 @@ fun MobileSettingsView(
             }
         }
 
-        // 3. Playback Engine Settings
+        // 3. Ekran Boyutu ve Görüntü Oranı (Aspect Ratio)
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = currentPalette.surface.copy(alpha = 0.7f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val currentAspectRatio by viewModel.aspectRatio.collectAsStateWithLifecycle()
+                val isHardwareAccel by viewModel.hardwareAccel.collectAsStateWithLifecycle()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "📺 Ekran Boyutu & Görüntü Oranı",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = currentPalette.secondary
+                        )
+                        Text(
+                            text = "Tüm canlı yayınlarda kalıcı olarak uygulanacak en-boy oranını seçin.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppAspectRatio.values().forEach { ratioOption ->
+                        val isSelected = ratioOption == currentAspectRatio
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) currentPalette.primary.copy(alpha = 0.25f) else Color.Transparent
+                            ),
+                            border = BorderStroke(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected) currentPalette.secondary else Color.White.copy(alpha = 0.08f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setAspectRatio(ratioOption) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = ratioOption.title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isSelected) currentPalette.secondary else Color.White
+                                    )
+                                    Text(
+                                        text = ratioOption.subtitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Seçili",
+                                        tint = currentPalette.secondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Donanım Hızlandırma (GPU Decoders)",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "H.264/HEVC donanım çözücüsü. Eski cihazlarda sorun olursa kapatın.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(
+                        checked = isHardwareAccel,
+                        onCheckedChange = { viewModel.setHardwareAccel(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = currentPalette.secondary,
+                            checkedTrackColor = currentPalette.secondary.copy(alpha = 0.35f)
+                        )
+                    )
+                }
+            }
+        }
+
+        // 4. Oynatıcı Motoru & Akış Tamponu (Engine & Buffer)
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = currentPalette.surface.copy(alpha = 0.7f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val currentPlayerEngine by viewModel.playerEngineType.collectAsStateWithLifecycle()
+                val currentBufferProfile by viewModel.bufferProfile.collectAsStateWithLifecycle()
+                val isAutoSwitchMirrors by viewModel.autoSwitchMirrors.collectAsStateWithLifecycle()
+
+                Text(
+                    text = "⚡ Oynatıcı Motoru ve Tamponlama",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = currentPalette.secondary
+                )
+                Text(
+                    text = "Bağlantı hızınıza ve cihazınıza en uygun akış motorunu ve tamponlama profilini belirleyin.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+
+                Text(
+                    text = "Motor Seçimi:",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PlayerEngineType.values().forEach { engine ->
+                        val isSelected = engine == currentPlayerEngine
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) currentPalette.primary.copy(alpha = 0.25f) else Color.Transparent
+                            ),
+                            border = BorderStroke(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected) currentPalette.secondary else Color.White.copy(alpha = 0.08f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setPlayerEngineType(engine) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = engine.title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isSelected) currentPalette.secondary else Color.White
+                                    )
+                                    Text(
+                                        text = engine.subtitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Seçili",
+                                        tint = currentPalette.secondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "Tamponlama / Buffer Profili:",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BufferProfile.values().forEach { profile ->
+                        val isSelected = profile == currentBufferProfile
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) currentPalette.primary.copy(alpha = 0.25f) else Color.Transparent
+                            ),
+                            border = BorderStroke(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected) currentPalette.secondary else Color.White.copy(alpha = 0.08f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setBufferProfile(profile) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = profile.title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isSelected) currentPalette.secondary else Color.White
+                                    )
+                                    Text(
+                                        text = profile.subtitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Seçili",
+                                        tint = currentPalette.secondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Otomatik Yedek Yayına Geçiş",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Yayın kesintiye uğrarsa otomatik olarak yedek sunucuya bağlanır.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(
+                        checked = isAutoSwitchMirrors,
+                        onCheckedChange = { viewModel.setAutoSwitchMirrors(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = currentPalette.secondary,
+                            checkedTrackColor = currentPalette.secondary.copy(alpha = 0.35f)
+                        )
+                    )
+                }
+            }
+        }
+
+        // 5. Kanal Sıralama ve Başlangıç Yönetimi
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = currentPalette.surface.copy(alpha = 0.7f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val isTurkishPriority by viewModel.turkishPriority.collectAsStateWithLifecycle()
+                val currentStartupTab by viewModel.startupTab.collectAsStateWithLifecycle()
+
+                Text(
+                    text = "🇹🇷 Kanal ve Sıralama Yönetimi",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = currentPalette.secondary
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "En Çok İzlenen Türk Kanalları Önde",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Kategori sekmelerinde TRT 1, ATV, Kanal D, Show, Star, TRT Spor vb. daima en başta yer alır.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(
+                        checked = isTurkishPriority,
+                        onCheckedChange = { viewModel.setTurkishPriority(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = currentPalette.secondary,
+                            checkedTrackColor = currentPalette.secondary.copy(alpha = 0.35f)
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                Text(
+                    text = "Açılış Başlangıç Sekmesi:",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StartupTabOption.values().forEach { tabOpt ->
+                        val isSelected = tabOpt == currentStartupTab
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) currentPalette.primary.copy(alpha = 0.25f) else Color.Transparent
+                            ),
+                            border = BorderStroke(
+                                if (isSelected) 1.5.dp else 1.dp,
+                                if (isSelected) currentPalette.secondary else Color.White.copy(alpha = 0.08f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setStartupTab(tabOpt) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = tabOpt.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isSelected) currentPalette.secondary else Color.White
+                                )
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Seçili",
+                                        tint = currentPalette.secondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Android Auto & Araç Sürüş Ayarları
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = currentPalette.surface.copy(alpha = 0.7f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val isCarAudioOnly by viewModel.carAudioOnlyDefault.collectAsStateWithLifecycle()
+                val isCarSteeringKeys by viewModel.carSteeringKeys.collectAsStateWithLifecycle()
+
+                Text(
+                    text = "🚗 Android Auto & Araç Sürüş Ayarları",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = currentPalette.secondary
+                )
+                Text(
+                    text = "Aracınızda güvenli ve kesintisiz televizyon/radyo deneyimi için optimize edilmiş ayarlar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Araç Modunda Sadece Ses (Radyo) Modu",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Kapalı (Önerilen): Canlı TV görüntüsü açılır, arka koltuk ekranlarında izlenebilir. Açık: Sadece radyo/ses çalar.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(
+                        checked = isCarAudioOnly,
+                        onCheckedChange = { viewModel.setCarAudioOnlyDefault(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = currentPalette.secondary,
+                            checkedTrackColor = currentPalette.secondary.copy(alpha = 0.35f)
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Direksiyon Medya Tuşları Entegrasyonu",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Direksiyondaki İleri/Geri/Play tuşlarıyla kanalları doğrudan değiştirin.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(
+                        checked = isCarSteeringKeys,
+                        onCheckedChange = { viewModel.setCarSteeringKeys(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = currentPalette.secondary,
+                            checkedTrackColor = currentPalette.secondary.copy(alpha = 0.35f)
+                        )
+                    )
+                }
+            }
+        }
+
+        // 7. Veri, Kaynaklar, Önbellek ve Sıfırlama
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = currentPalette.surface.copy(alpha = 0.7f)),
@@ -3430,14 +3950,9 @@ fun MobileSettingsView(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "Oynatıcı ve Akış Motoru",
+                    text = "💾 Yayın Kaynakları, Önbellek ve Sıfırlama",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = currentPalette.secondary
-                )
-                Text(
-                    text = "PinpirikTV, donma yapmayan ultra hızlı Media3 ExoPlayer motorunu kullanır. Bağlantılar otomatik olarak en hızlı Türk sunucularından beslenir.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.8f)
                 )
 
                 Button(
@@ -3460,7 +3975,31 @@ fun MobileSettingsView(
                 ) {
                     Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Kanal Listesini ve Yayınları Güncelle")
+                    Text("Kanal Listesini ve EPG'yi Sunucudan Güncelle")
+                }
+
+                OutlinedButton(
+                    onClick = { viewModel.clearPlaybackCache() },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.CleaningServices, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Video ve Akış Önbelleğini Temizle")
+                }
+
+                OutlinedButton(
+                    onClick = { viewModel.resetAllSettingsToDefault() },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = currentPalette.liveBadge),
+                    border = BorderStroke(1.dp, currentPalette.liveBadge.copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.Restore, contentDescription = null, tint = currentPalette.liveBadge)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Tüm Ayarları Fabrika Varsayılanlarına Sıfırla", color = currentPalette.liveBadge)
                 }
             }
         }
@@ -3473,45 +4012,153 @@ fun TvSettingsView(
     onNavigateToAddPlaylist: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val themeConfig = LocalThemeConfig.current
+    val currentPalette = themeConfig.palette
+    val currentAspectRatio by viewModel.aspectRatio.collectAsStateWithLifecycle()
+    val isTurkishPriority by viewModel.turkishPriority.collectAsStateWithLifecycle()
+    val currentPlayerEngine by viewModel.playerEngineType.collectAsStateWithLifecycle()
+    val currentBufferProfile by viewModel.bufferProfile.collectAsStateWithLifecycle()
+    val isFastPerformanceMode by viewModel.fastPerformanceMode.collectAsStateWithLifecycle()
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         Text(
-            text = "⚙️ PinpirikTV Ayarlar ve Yayın Yönetimi",
+            text = "⚙️ PinpirikTV Ayarlar ve Evrensel Sistem Yönetimi",
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
             color = Color.White
         )
 
+        // TV Hızlı Mod Kartı
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceBlue.copy(alpha = 0.85f)),
+            border = BorderStroke(1.5.dp, Color(0xFFFFD700)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "⚡ Hızlı Performans Modu (Lite Mode): ${if (isFastPerformanceMode) "AÇIK" else "KAPALI"}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFFFFD700)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Ağır görsel efektleri ve bulanıklıkları kaldırır. Zayıf işlemcili Android TV Box cihazlarında kanal gezinme ve menü hızını maksimuma çıkarır.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+                    Button(
+                        onClick = { viewModel.setFastPerformanceMode(!isFastPerformanceMode) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isFastPerformanceMode) Color(0xFFFFD700) else Color(0xFF14244A),
+                            contentColor = if (isFastPerformanceMode) Color(0xFF07122C) else Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.dpadFocusable(onSelect = { viewModel.setFastPerformanceMode(!isFastPerformanceMode) })
+                    ) {
+                        Text(if (isFastPerformanceMode) "Etkin (Hızlı Mod)" else "Etkinleştir", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // TV Ekran Boyutu Kartı
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceBlue.copy(alpha = 0.8f)),
-            border = BorderStroke(1.5.dp, AuroraCyan.copy(alpha = 0.5f)),
+            border = BorderStroke(1.5.dp, currentPalette.secondary.copy(alpha = 0.5f)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    text = "Yayın Kalitesi ve Performans",
+                    text = "📺 Ekran Boyutu & En-Boy Oranı: ${currentAspectRatio.title}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = AuroraCyan
+                    color = currentPalette.secondary
+                )
+                Text(
+                    text = "Televizyon ve araç ekranları için en uygun formatı seçin. Otomatik Uyum orijinal yayın formatını korurken, Tam Ekran tüm ekranı doldurur.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.8f)
                 )
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    AppAspectRatio.values().forEach { ratio ->
+                        val isSelected = ratio == currentAspectRatio
+                        Button(
+                            onClick = { viewModel.setAspectRatio(ratio) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSelected) currentPalette.secondary else Color(0xFF14244A),
+                                contentColor = if (isSelected) Color(0xFF07122C) else Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .dpadFocusable(onSelect = { viewModel.setAspectRatio(ratio) })
+                        ) {
+                            Text(
+                                text = ratio.title.substringBefore(" ("),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // TV Sıralama ve Akış Kartı
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceBlue.copy(alpha = 0.8f)),
+            border = BorderStroke(1.5.dp, currentPalette.secondary.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    text = "• Hızlı Başlatma: Akışlar 800ms'de başlar ve düşük gecikmeli canlı protokolle çalışır.\n" +
-                           "• Otomatik Çözücü: Donanım hızlandırmalı H.264/H.265 4K UHD video desteği.\n" +
+                    text = "🇹🇷 Kanal Önceliği ve Motor: ${currentPlayerEngine.title} (${currentBufferProfile.title})",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = currentPalette.secondary
+                )
+                Text(
+                    text = "• En Çok İzlenen Türk Kanalları Önde: ${if (isTurkishPriority) "AKTİF" else "KAPALI"}\n" +
+                           "• Otomatik Çözücü: Donanım hızlandırmalı 4K UHD video desteği.\n" +
                            "• Yedek Sunucular: Yayın kesilirse otomatik olarak yedek akış devreye girer.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White,
                     lineHeight = 22.sp
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = { viewModel.setTurkishPriority(!isTurkishPriority) },
+                        colors = ButtonDefaults.buttonColors(containerColor = currentPalette.secondary, contentColor = Color(0xFF07122C)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.dpadFocusable(onSelect = { viewModel.setTurkishPriority(!isTurkishPriority) })
+                    ) {
+                        Text(if (isTurkishPriority) "Türk Kanalları Önde (Açık)" else "Standart Sıralama", fontWeight = FontWeight.Bold)
+                    }
+
                     Button(
                         onClick = { viewModel.syncPresets() },
                         colors = ButtonDefaults.buttonColors(containerColor = AuroraCyan, contentColor = Color(0xFF07122C)),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.dpadFocusable(onSelect = { viewModel.syncPresets() })
                     ) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -3522,11 +4169,12 @@ fun TvSettingsView(
                         onClick = onNavigateToAddPlaylist,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.dpadFocusable(onSelect = onNavigateToAddPlaylist)
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Harici Liste / M3U Ekle")
+                        Text("Harici M3U Ekle")
                     }
                 }
             }

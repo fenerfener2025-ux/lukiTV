@@ -133,6 +133,16 @@ fun SilentPreviewPlayer(
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    val rootCause = error.cause
+                    val isCodecError = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                        error.message?.contains("Released by resource manager", ignoreCase = true) == true ||
+                        rootCause?.message?.contains("Released by resource manager", ignoreCase = true) == true
+
+                    if (isCodecError) {
+                        playerState = PreviewPlayerState.Error("Donanım çözücü önizleme için kullanılamıyor")
+                        return
+                    }
+
                     val mirrors = channel?.streamMirrors ?: emptyList()
                     if (mirrorIndex < mirrors.size - 1) {
                         mirrorIndex++
@@ -145,6 +155,8 @@ fun SilentPreviewPlayer(
             exoPlayer.addListener(listener)
             onDispose {
                 exoPlayer.removeListener(listener)
+                exoPlayer.clearVideoSurface()
+                exoPlayer.stop()
                 exoPlayer.release()
             }
         }

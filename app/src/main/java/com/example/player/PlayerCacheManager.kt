@@ -140,4 +140,24 @@ object PlayerCacheManager {
             Log.w(TAG, "Error releasing cache: ${e.message}")
         }
     }
+
+    @Synchronized
+    fun clearCache(context: Context) {
+        cancelPrefetch()
+        try {
+            simpleCache?.keys?.forEach { key ->
+                try {
+                    simpleCache?.removeResource(key)
+                } catch (_: Exception) {}
+            }
+            releaseCache()
+            val cacheDir = File(context.cacheDir, "iptv_media_cache")
+            if (cacheDir.exists()) {
+                cacheDir.deleteRecursively()
+            }
+            Log.d(TAG, "Cleared media cache directory.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error clearing cache: ${e.message}")
+        }
+    }
 }

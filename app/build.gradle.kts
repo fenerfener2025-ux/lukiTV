@@ -12,7 +12,7 @@ android {
 
   defaultConfig {
     applicationId = "com.aistudio.auroratv.kxmpzq"
-    minSdk = 24
+    minSdk = 23
     targetSdk = 34 // Let's match targetSdk = 34 requested in user spec!
     versionCode = 1
     versionName = "1.0"

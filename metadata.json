@@ -1,6 +1,6 @@
 {
   "name": "PinpirikTV",
-  "description": "Android TV ve telefonlar için ginepig maskotlu, yüksek hızlı ve donma karşıtı canlı yayın motorlu modern IPTV uygulaması.",
+  "description": "Android TV, Araç (Android Car / Auto) ve mobil için ginepig maskotlu, donma karşıtı canlı yayın motorlu modern IPTV uygulaması.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.InputStream
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 data class PresetSource(
@@ -686,6 +687,66 @@ val STABLE_TURKISH_PRESEEDED_CHANNELS = listOf(
     )
 )
 
+fun isTurkishChannel(channel: IPTVChannel): Boolean {
+    val country = channel.country.lowercase(Locale.getDefault())
+    val lang = channel.language.lowercase(Locale.getDefault())
+    if (country.contains("türk") || country.contains("turk") || lang == "tr") return true
+
+    val name = channel.name.lowercase(Locale.getDefault())
+    val group = channel.groupTitle.lowercase(Locale.getDefault())
+    if (group.contains("tr") || group.contains("turk") || group.contains("türk") || group.contains("yerli") || group.contains("ulusal")) return true
+
+    // Check common Turkish channel name markers
+    if (name.contains("trt") || name.contains("atv") || name.contains("kanald") || name.contains("kanal d") ||
+        name.contains("show") || name.contains("star tv") || name.contains("star hd") || name.contains("tv8") ||
+        name.contains("now tv") || name.contains("fox") || name.contains("halk tv") || name.contains("sözcü") ||
+        name.contains("sozcu") || name.contains("haber global") || name.contains("habertürk") ||
+        name.contains("haberturk") || name.contains("a haber") || name.contains("ntv") || name.contains("cnn türk") ||
+        name.contains("cnn turk") || name.contains("tv100") || name.contains("beyaz tv") || name.contains("tgrt") ||
+        name.contains("ekol") || name.contains("kral") || name.contains("powertürk") || name.contains("a spor") ||
+        name.contains("ht spor") || name.contains("sports tv") || name.contains("fb tv") || name.contains("bjk tv") ||
+        name.contains("gs tv") || name.contains("dmax") || name.contains("tlc") || name.contains("teve2") ||
+        name.contains("minika") || name.contains("ulusal kanal") || name.contains("bengütürk") || name.contains("flash haber")) {
+        return true
+    }
+
+    return CategoryHelper.detectCountry(channel.name, channel.groupTitle) == "Türkiye"
+}
+
+fun getChannelPriorityRank(channel: IPTVChannel): Int {
+    // 1. Exact or normalized ID match in the preferred Turkish order (0 .. 49)
+    val exactIdx = PREFERRED_TURKISH_ORDER.indexOf(channel.id)
+    if (exactIdx != -1) return exactIdx
+
+    // 2. Partial match in PREFERRED_TURKISH_ORDER by channel name (50 .. 99)
+    val normalized = channel.normalizedName.ifBlank { channel.name.lowercase(Locale.getDefault()) }
+    val matchIdx = PREFERRED_TURKISH_ORDER.indexOfFirst { prefId ->
+        val cleanPref = prefId.replace("_hd", "").replace("_", " ")
+        normalized.contains(cleanPref) || cleanPref.contains(normalized)
+    }
+    if (matchIdx != -1) return 50 + matchIdx
+
+    // 3. Other Turkish channels (100 .. 499)
+    if (isTurkishChannel(channel)) {
+        return 100 + (CategoryHelper.getCategoryPriority(channel.category) * 10)
+    }
+
+    // 4. Foreign / International channels (1000+) - Placed after Turkish channels
+    return 1000 + (CategoryHelper.getCategoryPriority(channel.category) * 10)
+}
+
+/**
+ * Kategori sekmelerinde kanalları önce en çok izlenen Türk kanalları,
+ * sonra diğer yerli kanallar, en son yabancı kanallar gelecek şekilde sıralar.
+ */
+fun sortCategoryChannelsWithTurkishPriority(channels: List<IPTVChannel>): List<IPTVChannel> {
+    return channels.sortedWith(
+        compareByDescending<IPTVChannel> { it.isFavorite }
+            .thenBy { getChannelPriorityRank(it) }
+            .thenBy { it.name }
+    )
+}
+
 fun sortChannelsWithUserPreference(
     channels: List<IPTVChannel>,
     isWorldTab: Boolean = false,
@@ -712,15 +773,9 @@ fun sortChannelsWithUserPreference(
         )
     }
 
-    // Normal / Türk Kanalları Modu:
-    // Öncelikli olarak PREFERRED_TURKISH_ORDER dizilimi (TRT 1, TRT 2, ATV, Kanal D, Show, Star, Halk, Sözcü...)
-    // Diğer kanallar ise kategori ve ada göre sıralanır
-    return channels.sortedWith(
-        compareBy<IPTVChannel> {
-            val idx = PREFERRED_TURKISH_ORDER.indexOf(it.id)
-            if (idx != -1) idx else (1000 + CategoryHelper.getCategoryPriority(it.category))
-        }.thenBy { it.name }
-    )
+    // Normal / Kategori Modu:
+    // Her kategoride önce en çok izlenen Türk kanalları, sonra yabancı kanallar
+    return sortCategoryChannelsWithTurkishPriority(channels)
 }
 
 class ChannelRepository(

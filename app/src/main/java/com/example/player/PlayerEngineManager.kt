@@ -91,7 +91,7 @@ class PlayerEngineManager(private val context: Context) {
                 val media3 = engines[0] as? Media3Engine
                 if (media3 != null && media3.getPlayer() != null) {
                     currentEngineIndex = 0
-                    media3.play(currentUrl)
+                    media3.play(currentUrl, currentChannel?.name, currentChannel?.logoUrl)
                     _activePlayer.value = media3.getPlayer()
                     return@launch
                 }
@@ -112,7 +112,11 @@ class PlayerEngineManager(private val context: Context) {
         val engine = engines[currentEngineIndex]
         engine.initialize(context)
         _activePlayer.value = engine.getPlayer()
-        engine.play(currentUrl)
+        engine.play(currentUrl, currentChannel?.name, currentChannel?.logoUrl)
+    }
+
+    fun getMediaSession(): androidx.media3.session.MediaSession? {
+        return (engines.firstOrNull { it is Media3Engine } as? Media3Engine)?.getMediaSession()
     }
 
     var onAutoNextRequested: (() -> Unit)? = null

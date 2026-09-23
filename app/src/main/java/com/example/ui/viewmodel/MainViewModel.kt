@@ -33,6 +33,11 @@ import java.util.Calendar
 import com.example.data.local.SettingsManager
 import com.example.data.local.ContinueWatchingManager
 import com.example.data.local.ContinueWatchingItem
+import com.example.domain.model.AppAspectRatio
+import com.example.domain.model.BufferProfile
+import com.example.domain.model.PlayerEngineType
+import com.example.domain.model.StartupTabOption
+import com.example.player.PlayerCacheManager
 import com.example.ui.theme.AppColorPalette
 import com.example.ui.theme.AppBackgroundTexture
 import kotlinx.coroutines.flow.map
@@ -195,6 +200,133 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             settingsManager.saveBackgroundTexture(texture.name)
             showRemoteToast("Zemin Dokusu: ${texture.title} seçildi.")
+        }
+    }
+
+    // Ekran Boyutu / Aspect Ratio State
+    val aspectRatio: StateFlow<AppAspectRatio> = settingsManager.aspectRatioFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppAspectRatio.AUTO_FIT)
+
+    val hardwareAccel: StateFlow<Boolean> = settingsManager.hardwareAccelFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    val playerEngineType: StateFlow<PlayerEngineType> = settingsManager.playerEngineFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, PlayerEngineType.MEDIA3)
+
+    val bufferProfile: StateFlow<BufferProfile> = settingsManager.bufferProfileFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, BufferProfile.BALANCED)
+
+    val autoSwitchMirrors: StateFlow<Boolean> = settingsManager.autoSwitchMirrorsFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    val turkishPriority: StateFlow<Boolean> = settingsManager.turkishPriorityFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    val startupTab: StateFlow<StartupTabOption> = settingsManager.startupTabFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, StartupTabOption.LIVE_TR)
+
+    val carAudioOnlyDefault: StateFlow<Boolean> = settingsManager.carAudioOnlyDefaultFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val carSteeringKeys: StateFlow<Boolean> = settingsManager.carSteeringKeysFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    val fastPerformanceMode: StateFlow<Boolean> = settingsManager.fastPerformanceModeFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setFastPerformanceMode(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveFastPerformanceMode(enabled)
+            showRemoteToast(if (enabled) "⚡ Hızlı Performans Modu Etkinleştirildi (Yapay efektler kapatıldı)" else "🎨 Standart Görsel Mod Etkinleştirildi")
+        }
+    }
+
+    fun setAspectRatio(ratio: AppAspectRatio) {
+        viewModelScope.launch {
+            settingsManager.saveAspectRatio(ratio)
+            showRemoteToast("Ekran Boyutu: ${ratio.title}")
+        }
+    }
+
+    fun cycleNextAspectRatio(): AppAspectRatio {
+        val allRatios = AppAspectRatio.values()
+        val currentIndex = allRatios.indexOf(aspectRatio.value)
+        val nextRatio = allRatios[(currentIndex + 1) % allRatios.size]
+        setAspectRatio(nextRatio)
+        return nextRatio
+    }
+
+    fun setHardwareAccel(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveHardwareAccel(enabled)
+            showRemoteToast(if (enabled) "Donanım Hızlandırma Açık" else "Yazılım Güvenli Mod Açık")
+        }
+    }
+
+    fun setPlayerEngineType(engine: PlayerEngineType) {
+        viewModelScope.launch {
+            settingsManager.savePlayerEngine(engine)
+            showRemoteToast("Oynatıcı Motoru: ${engine.title}")
+        }
+    }
+
+    fun setBufferProfile(profile: BufferProfile) {
+        viewModelScope.launch {
+            settingsManager.saveBufferProfile(profile)
+            showRemoteToast("Tampon Profili: ${profile.title}")
+        }
+    }
+
+    fun setAutoSwitchMirrors(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveAutoSwitchMirrors(enabled)
+            showRemoteToast(if (enabled) "Yedek Yayına Geçiş: Aktif" else "Yedek Yayına Geçiş: Kapalı")
+        }
+    }
+
+    fun setTurkishPriority(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveTurkishPriority(enabled)
+            showRemoteToast(if (enabled) "En Çok İzlenen Türk Kanalları Önde" else "Standart Sıralama")
+        }
+    }
+
+    fun setStartupTab(tab: StartupTabOption) {
+        viewModelScope.launch {
+            settingsManager.saveStartupTab(tab)
+            showRemoteToast("Başlangıç Sekmesi: ${tab.title}")
+        }
+    }
+
+    fun setCarAudioOnlyDefault(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveCarAudioOnlyDefault(enabled)
+            showRemoteToast(if (enabled) "Araçta Sadece Ses: Aktif" else "Araçta Görüntülü Başlat")
+        }
+    }
+
+    fun setCarSteeringKeys(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveCarSteeringKeys(enabled)
+            showRemoteToast(if (enabled) "Direksiyon Tuşları: Aktif" else "Direksiyon Tuşları: Devre Dışı")
+        }
+    }
+
+    fun resetAllSettingsToDefault() {
+        viewModelScope.launch {
+            settingsManager.resetAllSettings()
+            showRemoteToast("Tüm ayarlar varsayılana döndürüldü.")
+        }
+    }
+
+    fun clearPlaybackCache() {
+        viewModelScope.launch {
+            try {
+                PlayerCacheManager.clearCache(app)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error clearing cache", e)
+            }
+            showRemoteToast("Akış ve video önbelleği temizlendi.")
         }
     }
 
@@ -693,6 +825,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         stopChannelTracking()
         playerManager.stop()
         _activeChannel.value = null
+    }
+
+    fun togglePlayPause() {
+        val player = playerManager.activePlayer.value
+        if (player != null) {
+            if (player.isPlaying) {
+                player.pause()
+                showRemoteToast("Durduruldu")
+            } else {
+                player.play()
+                showRemoteToast("Oynatılıyor")
+            }
+        } else {
+            val current = _activeChannel.value ?: allChannels.value.firstOrNull()
+            if (current != null) {
+                selectChannel(current)
+            }
+        }
     }
 
     fun toggleFavorite(channelId: String) {

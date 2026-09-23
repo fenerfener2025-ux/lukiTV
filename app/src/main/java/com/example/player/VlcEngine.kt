@@ -17,8 +17,8 @@ class VlcEngine : PlayerEngine {
         }
     }
 
-    override fun play(url: String) {
-        delegate?.play(url)
+    override fun play(url: String, title: String?, artworkUrl: String?) {
+        delegate?.play(url, title, artworkUrl)
     }
 
     override fun stop() {
